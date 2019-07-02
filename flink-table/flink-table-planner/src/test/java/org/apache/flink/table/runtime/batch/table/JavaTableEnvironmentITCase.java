@@ -31,6 +31,7 @@ import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.table.api.PlannerConfig;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.api.java.BatchTableEnvironment;
 import org.apache.flink.table.calcite.CalciteConfigBuilder;
 import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
@@ -69,6 +70,28 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		return Arrays.asList(new Object[][] {
 			{ TableProgramsTestBase.DEFAULT() }
 		});
+	}
+
+	@Test(expected = ValidationException.class)
+	public void testIllegalEmptyName() throws Exception {
+		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
+
+		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.get3TupleDataSet(env);
+		Table t = tableEnv.fromDataSet(ds);
+		// Must fail. Table is empty
+		tableEnv.registerTable("", t);
+	}
+
+	@Test(expected = ValidationException.class)
+	public void testIllegalWhitespaceOnlyName() throws Exception {
+		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
+
+		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.get3TupleDataSet(env);
+		Table t = tableEnv.fromDataSet(ds);
+		// Must fail. Table is empty
+		tableEnv.registerTable("     ", t);
 	}
 
 	@Test
@@ -154,17 +177,6 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 				"13,5\n" + "14,5\n" + "15,5\n" +
 				"16,6\n" + "17,6\n" + "18,6\n" + "19,6\n" + "20,6\n" + "21,6\n";
 		compareResultAsText(results, expected);
-	}
-
-	@Test(expected = TableException.class)
-	public void testIllegalName() throws Exception {
-		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
-
-		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.get3TupleDataSet(env);
-		Table t = tableEnv.fromDataSet(ds);
-		// Must fail. Table name matches internal name pattern.
-		tableEnv.registerTable("_DataSetTable_42", t);
 	}
 
 	@Test(expected = TableException.class)
@@ -458,7 +470,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		compareResultAsText(results, expected);
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testGenericRow() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -472,7 +484,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(dataSet);
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testGenericRowWithAlias() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -486,8 +498,8 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(dataSet, "nullField");
 	}
 
-	@Test(expected = TableException.class)
-	public void testAsWithToManyFields() throws Exception {
+	@Test(expected = ValidationException.class)
+	public void testAsWithTooManyFields() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
 
@@ -495,7 +507,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(CollectionDataSets.get3TupleDataSet(env), "a, b, c, d");
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testAsWithAmbiguousFields() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -504,7 +516,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(CollectionDataSets.get3TupleDataSet(env), "a, b, b");
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testAsWithNonFieldReference1() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -513,7 +525,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(CollectionDataSets.get3TupleDataSet(env), "a + 1, b, c");
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testAsWithNonFieldReference2() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -522,7 +534,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(CollectionDataSets.get3TupleDataSet(env), "a as foo, b,  c");
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testNonStaticClassInput() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -531,7 +543,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 		tableEnv.fromDataSet(env.fromElements(new MyNonStatic()), "name");
 	}
 
-	@Test(expected = TableException.class)
+	@Test(expected = ValidationException.class)
 	public void testNonStaticClassOutput() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		BatchTableEnvironment tableEnv = BatchTableEnvironment.create(env, config());
@@ -550,7 +562,7 @@ public class JavaTableEnvironmentITCase extends TableProgramsCollectionTestBase 
 				.replaceLogicalOptRuleSet(RuleSets.ofList())
 				.replacePhysicalOptRuleSet(RuleSets.ofList())
 				.build();
-		tableEnv.getConfig().setPlannerConfig(cc);
+		tableEnv.getConfig().addPlannerConfig(cc);
 
 		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.get3TupleDataSet(env);
 		Table t = tableEnv.fromDataSet(ds);

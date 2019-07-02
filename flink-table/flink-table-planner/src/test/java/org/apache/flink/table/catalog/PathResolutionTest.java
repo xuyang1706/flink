@@ -18,8 +18,7 @@
 
 package org.apache.flink.table.catalog;
 
-import org.apache.flink.table.api.java.StreamTableEnvImpl;
-import org.apache.flink.table.operations.CatalogTableOperation;
+import org.apache.flink.table.api.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.utils.StreamTableTestUtil;
 import org.apache.flink.util.Preconditions;
 
@@ -202,14 +201,14 @@ public class PathResolutionTest {
 		testSpec.getDefaultCatalog().ifPresent(catalogManager::setCurrentCatalog);
 		testSpec.getDefaultDatabase().ifPresent(catalogManager::setCurrentDatabase);
 
-		CatalogTableOperation tab = catalogManager.resolveTable(lookupPath.toArray(new String[0])).get();
+		CatalogManager.ResolvedTable tab = catalogManager.resolveTable(lookupPath.toArray(new String[0])).get();
 		assertThat(tab.getTablePath(), CoreMatchers.equalTo(testSpec.getExpectedPath()));
 	}
 
 	@Test
 	public void testStreamSqlPathResolution() {
 		StreamTableTestUtil util = new StreamTableTestUtil(new Some<>(testSpec.getCatalogManager()));
-		StreamTableEnvImpl tEnv = util.javaTableEnv();
+		StreamTableEnvironmentImpl tEnv = util.javaTableEnv();
 
 		testSpec.getDefaultCatalog().ifPresent(tEnv::useCatalog);
 		testSpec.getDefaultDatabase().ifPresent(tEnv::useDatabase);

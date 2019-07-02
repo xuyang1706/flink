@@ -43,6 +43,9 @@ import java.util.Optional;
  *     <li>Registering a user-defined scalar function. For the user-defined table and aggregate
  *     function, use the StreamTableEnvironment or BatchTableEnvironment</li>
  * </ul>
+ *
+ * <p>This environment is unified both on a language level (for all JVM-based languages, i.e. no distinction between
+ * Scala and Java API) and for bounded and unbounded data processing.
  */
 @PublicEvolving
 public interface TableEnvironment {
@@ -177,6 +180,35 @@ public interface TableEnvironment {
 	Table scan(String... tablePath);
 
 	/**
+	 * Writes the {@link Table} to a {@link TableSink} that was registered under the specified name.
+	 *
+	 * <p>See the documentation of {@link TableEnvironment#useDatabase(String)} or
+	 * {@link TableEnvironment#useCatalog(String)} for the rules on the path resolution.
+	 *
+	 * @param table The Table to write to the sink.
+	 * @param queryConfig The {@link QueryConfig} to use.
+	 * @param sinkPath The first part of the path of the registered {@link TableSink} to which the {@link Table} is
+	 *        written. This is to ensure at least the name of the {@link TableSink} is provided.
+	 * @param sinkPathContinued The remaining part of the path of the registered {@link TableSink} to which the
+	 *        {@link Table} is written.
+	 */
+	void insertInto(Table table, QueryConfig queryConfig, String sinkPath, String... sinkPathContinued);
+
+	/**
+	 * Writes the {@link Table} to a {@link TableSink} that was registered under the specified name.
+	 *
+	 * <p>See the documentation of {@link TableEnvironment#useDatabase(String)} or
+	 * {@link TableEnvironment#useCatalog(String)} for the rules on the path resolution.
+	 *
+	 * @param table The Table to write to the sink.
+	 * @param sinkPath The first part of the path of the registered {@link TableSink} to which the {@link Table} is
+	 *        written. This is to ensure at least the name of the {@link TableSink} is provided.
+	 * @param sinkPathContinued The remaining part of the path of the registered {@link TableSink} to which the
+	 *        {@link Table} is written.
+	 */
+	void insertInto(Table table, String sinkPath, String... sinkPathContinued);
+
+	/**
 	 * Creates a table source and/or table sink from a descriptor.
 	 *
 	 * <p>Descriptors allow for declaring the communication to external systems in an
@@ -210,9 +242,23 @@ public interface TableEnvironment {
 	TableDescriptor connect(ConnectorDescriptor connectorDescriptor);
 
 	/**
-	 * Gets the names of all tables registered directly in this environment.
+	 * Gets the names of all catalogs registered in this environment.
 	 *
-	 * @return A list of the names of all registered tables.
+	 * @return A list of the names of all registered catalogs.
+	 */
+	String[] listCatalogs();
+
+	/**
+	 * Gets the names of all databases registered in the current catalog.
+	 *
+	 * @return A list of the names of all registered databases in the current catalog.
+	 */
+	String[] listDatabases();
+
+	/**
+	 * Gets the names of all tables registered in the current database of the current catalog.
+	 *
+	 * @return A list of the names of all registered tables in the current database of the current catalog.
 	 */
 	String[] listTables();
 

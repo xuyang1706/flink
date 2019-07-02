@@ -47,15 +47,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * A generic catalog implementation that holds all meta objects in memory.
  */
-public class GenericInMemoryCatalog implements Catalog {
-	public static final String FLINK_IS_GENERIC_KEY = "is_generic";
-	public static final String FLINK_IS_GENERIC_VALUE = "true";
+public class GenericInMemoryCatalog extends AbstractCatalog {
 
-	private static final String DEFAULT_DB = "default";
+	public static final String DEFAULT_DB = "default";
 
-	private final String defaultDatabase;
-
-	private final String catalogName;
 	private final Map<String, CatalogDatabase> databases;
 	private final Map<ObjectPath, CatalogBaseTable> tables;
 	private final Map<ObjectPath, CatalogFunction> functions;
@@ -71,13 +66,10 @@ public class GenericInMemoryCatalog implements Catalog {
 	}
 
 	public GenericInMemoryCatalog(String name, String defaultDatabase) {
-		checkArgument(!StringUtils.isNullOrWhitespaceOnly(name), "name cannot be null or empty");
-		checkArgument(!StringUtils.isNullOrWhitespaceOnly(defaultDatabase), "defaultDatabase cannot be null or empty");
+		super(name, defaultDatabase);
 
-		this.catalogName = name;
-		this.defaultDatabase = defaultDatabase;
 		this.databases = new LinkedHashMap<>();
-		this.databases.put(defaultDatabase, new GenericCatalogDatabase(new HashMap<>(), ""));
+		this.databases.put(defaultDatabase, new CatalogDatabaseImpl(new HashMap<>(), null));
 		this.tables = new LinkedHashMap<>();
 		this.functions = new LinkedHashMap<>();
 		this.partitions = new LinkedHashMap<>();
@@ -99,11 +91,6 @@ public class GenericInMemoryCatalog implements Catalog {
 	// ------ databases ------
 
 	@Override
-	public String getDefaultDatabase() {
-		return defaultDatabase;
-	}
-
-	@Override
 	public void createDatabase(String databaseName, CatalogDatabase db, boolean ignoreIfExists)
 			throws DatabaseAlreadyExistException {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName));
@@ -111,7 +98,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 		if (databaseExists(databaseName)) {
 			if (!ignoreIfExists) {
-				throw new DatabaseAlreadyExistException(catalogName, databaseName);
+				throw new DatabaseAlreadyExistException(getName(), databaseName);
 			}
 		} else {
 			databases.put(databaseName, db.copy());
@@ -129,10 +116,10 @@ public class GenericInMemoryCatalog implements Catalog {
 			if (isDatabaseEmpty(databaseName)) {
 				databases.remove(databaseName);
 			} else {
-				throw new DatabaseNotEmptyException(catalogName, databaseName);
+				throw new DatabaseNotEmptyException(getName(), databaseName);
 			}
 		} else if (!ignoreIfNotExists) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		}
 	}
 
@@ -161,7 +148,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 			databases.put(databaseName, newDatabase.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		}
 	}
 
@@ -175,7 +162,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName));
 
 		if (!databaseExists(databaseName)) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		} else {
 			return databases.get(databaseName).copy();
 		}
@@ -197,12 +184,12 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(table);
 
 		if (!databaseExists(tablePath.getDatabaseName())) {
-			throw new DatabaseNotExistException(catalogName, tablePath.getDatabaseName());
+			throw new DatabaseNotExistException(getName(), tablePath.getDatabaseName());
 		}
 
 		if (tableExists(tablePath)) {
 			if (!ignoreIfExists) {
-				throw new TableAlreadyExistException(catalogName, tablePath);
+				throw new TableAlreadyExistException(getName(), tablePath);
 			}
 		} else {
 			tables.put(tablePath, table.copy());
@@ -232,7 +219,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 			tables.put(tablePath, newTable.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -251,7 +238,7 @@ public class GenericInMemoryCatalog implements Catalog {
 			partitionStats.remove(tablePath);
 			partitionColumnStats.remove(tablePath);
 		} else if (!ignoreIfNotExists) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -265,7 +252,7 @@ public class GenericInMemoryCatalog implements Catalog {
 			ObjectPath newPath = new ObjectPath(tablePath.getDatabaseName(), newTableName);
 
 			if (tableExists(newPath)) {
-				throw new TableAlreadyExistException(catalogName, newPath);
+				throw new TableAlreadyExistException(getName(), newPath);
 			} else {
 				tables.put(newPath, tables.remove(tablePath));
 
@@ -295,7 +282,7 @@ public class GenericInMemoryCatalog implements Catalog {
 				}
 			}
 		} else if (!ignoreIfNotExists) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -304,7 +291,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName), "databaseName cannot be null or empty");
 
 		if (!databaseExists(databaseName)) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		}
 
 		return tables.keySet().stream()
@@ -317,7 +304,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName), "databaseName cannot be null or empty");
 
 		if (!databaseExists(databaseName)) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		}
 
 		return tables.keySet().stream()
@@ -331,7 +318,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(tablePath);
 
 		if (!tableExists(tablePath)) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		} else {
 			return tables.get(tablePath).copy();
 		}
@@ -346,7 +333,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 	private void ensureTableExists(ObjectPath tablePath) throws TableNotExistException {
 		if (!tableExists(tablePath)) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -359,12 +346,12 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(function);
 
 		if (!databaseExists(functionPath.getDatabaseName())) {
-			throw new DatabaseNotExistException(catalogName, functionPath.getDatabaseName());
+			throw new DatabaseNotExistException(getName(), functionPath.getDatabaseName());
 		}
 
 		if (functionExists(functionPath)) {
 			if (!ignoreIfExists) {
-				throw new FunctionAlreadyExistException(catalogName, functionPath);
+				throw new FunctionAlreadyExistException(getName(), functionPath);
 			}
 		} else {
 			functions.put(functionPath, function.copy());
@@ -389,7 +376,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 			functions.put(functionPath, newFunction.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new FunctionNotExistException(catalogName, functionPath);
+			throw new FunctionNotExistException(getName(), functionPath);
 		}
 	}
 
@@ -400,7 +387,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		if (functionExists(functionPath)) {
 			functions.remove(functionPath);
 		} else if (!ignoreIfNotExists) {
-			throw new FunctionNotExistException(catalogName, functionPath);
+			throw new FunctionNotExistException(getName(), functionPath);
 		}
 	}
 
@@ -409,7 +396,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkArgument(!StringUtils.isNullOrWhitespaceOnly(databaseName), "databaseName cannot be null or empty");
 
 		if (!databaseExists(databaseName)) {
-			throw new DatabaseNotExistException(catalogName, databaseName);
+			throw new DatabaseNotExistException(getName(), databaseName);
 		}
 
 		return functions.keySet().stream()
@@ -422,7 +409,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(functionPath);
 
 		if (!functionExists(functionPath)) {
-			throw new FunctionNotExistException(catalogName, functionPath);
+			throw new FunctionNotExistException(getName(), functionPath);
 		} else {
 			return functions.get(functionPath).copy();
 		}
@@ -449,7 +436,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 		if (partitionExists(tablePath, partitionSpec)) {
 			if (!ignoreIfExists) {
-				throw new PartitionAlreadyExistsException(catalogName, tablePath, partitionSpec);
+				throw new PartitionAlreadyExistsException(getName(), tablePath, partitionSpec);
 			}
 		}
 
@@ -467,7 +454,7 @@ public class GenericInMemoryCatalog implements Catalog {
 			partitionStats.get(tablePath).remove(partitionSpec);
 			partitionColumnStats.get(tablePath).remove(partitionSpec);
 		} else if (!ignoreIfNotExists) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 	}
 
@@ -490,7 +477,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 			partitions.get(tablePath).put(partitionSpec, newPartition.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 	}
 
@@ -532,7 +519,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(partitionSpec);
 
 		if (!partitionExists(tablePath, partitionSpec)) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 
 		return partitions.get(tablePath).get(partitionSpec).copy();
@@ -550,7 +537,7 @@ public class GenericInMemoryCatalog implements Catalog {
 	private void ensureFullPartitionSpec(ObjectPath tablePath, CatalogPartitionSpec partitionSpec)
 		throws TableNotExistException, PartitionSpecInvalidException {
 		if (!isFullPartitionSpec(tablePath, partitionSpec)) {
-			throw new PartitionSpecInvalidException(catalogName, ((CatalogTable) getTable(tablePath)).getPartitionKeys(),
+			throw new PartitionSpecInvalidException(getName(), ((CatalogTable) getTable(tablePath)).getPartitionKeys(),
 				tablePath, partitionSpec);
 		}
 	}
@@ -575,7 +562,7 @@ public class GenericInMemoryCatalog implements Catalog {
 
 	private void ensurePartitionedTable(ObjectPath tablePath) throws TableNotPartitionedException {
 		if (!isPartitionedTable(tablePath)) {
-			throw new TableNotPartitionedException(catalogName, tablePath);
+			throw new TableNotPartitionedException(getName(), tablePath);
 		}
 	}
 
@@ -601,7 +588,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(tablePath);
 
 		if (!tableExists(tablePath)) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 
 		CatalogTableStatistics result = tableStats.get(tablePath);
@@ -613,7 +600,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(tablePath);
 
 		if (!tableExists(tablePath)) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 
 		CatalogColumnStatistics result = tableColumnStats.get(tablePath);
@@ -627,7 +614,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(partitionSpec);
 
 		if (!partitionExists(tablePath, partitionSpec)) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 
 		CatalogTableStatistics result = partitionStats.get(tablePath).get(partitionSpec);
@@ -641,7 +628,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		checkNotNull(partitionSpec);
 
 		if (!partitionExists(tablePath, partitionSpec)) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 
 		CatalogColumnStatistics result = partitionColumnStats.get(tablePath).get(partitionSpec);
@@ -657,7 +644,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		if (tableExists(tablePath)) {
 			tableStats.put(tablePath, tableStatistics.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -670,7 +657,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		if (tableExists(tablePath)) {
 			tableColumnStats.put(tablePath, columnStatistics.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new TableNotExistException(catalogName, tablePath);
+			throw new TableNotExistException(getName(), tablePath);
 		}
 	}
 
@@ -684,7 +671,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		if (partitionExists(tablePath, partitionSpec)) {
 			partitionStats.get(tablePath).put(partitionSpec, partitionStatistics.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 	}
 
@@ -698,7 +685,7 @@ public class GenericInMemoryCatalog implements Catalog {
 		if (partitionExists(tablePath, partitionSpec)) {
 			partitionColumnStats.get(tablePath).put(partitionSpec, columnStatistics.copy());
 		} else if (!ignoreIfNotExists) {
-			throw new PartitionNotExistException(catalogName, tablePath, partitionSpec);
+			throw new PartitionNotExistException(getName(), tablePath, partitionSpec);
 		}
 	}
 

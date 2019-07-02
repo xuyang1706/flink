@@ -100,11 +100,11 @@ The default fraction for managed memory can be adjusted using the taskmanager.me
 
 {% include generated/security_configuration.html %}
 
-### Network Environment
+### Netty Shuffle Environment
 
-{% include generated/network_environment_configuration.html %}
+{% include generated/netty_shuffle_environment_configuration.html %}
 
-### Network communication (via Netty)
+### Network Communication (via Netty)
 
 These parameters allow for advanced tuning. The default values are sufficient when running concurrent high-throughput jobs on a large cluster.
 
@@ -131,6 +131,10 @@ These parameters allow for advanced tuning. The default values are sufficient wh
 The configuration keys in this section are independent of the used resource management framework (YARN, Mesos, Standalone, ...)
 
 {% include generated/resource_manager_configuration.html %}
+
+### Shuffle Service
+
+{% include generated/shuffle_service_configuration.html %}
 
 ### YARN
 

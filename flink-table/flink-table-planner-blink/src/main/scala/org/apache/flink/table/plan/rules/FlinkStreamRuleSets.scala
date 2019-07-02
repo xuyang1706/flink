@@ -54,7 +54,8 @@ object FlinkStreamRuleSets {
     * can create new plan nodes.
     */
   val EXPAND_PLAN_RULES: RuleSet = RuleSets.ofList(
-    LogicalCorrelateToTemporalTableJoinRule.INSTANCE,
+    LogicalCorrelateToJoinFromTemporalTableRule.INSTANCE,
+    LogicalCorrelateToJoinFromTemporalTableFunctionRule.INSTANCE,
     TableScanRule.INSTANCE)
 
   val POST_EXPAND_CLEAN_UP_RULES: RuleSet = RuleSets.ofList(
@@ -121,7 +122,9 @@ object FlinkStreamRuleSets {
         new CoerceInputsRule(classOf[LogicalMinus], false),
         ConvertToNotInOrInRule.INSTANCE,
         // optimize limit 0
-        FlinkLimit0RemoveRule.INSTANCE
+        FlinkLimit0RemoveRule.INSTANCE,
+        // unnest rule
+        LogicalUnnestRule.INSTANCE
       )
     ).asJava)
 
@@ -152,6 +155,14 @@ object FlinkStreamRuleSets {
       // reduce expressions in filters and joins
       ++ REDUCE_EXPRESSION_RULES.asScala
     ).asJava)
+
+  /**
+    * RuleSet to do push predicate into table scan
+    */
+  val FILTER_TABLESCAN_PUSHDOWN_RULES: RuleSet = RuleSets.ofList(
+    // push a filter down into the table scan
+    PushFilterIntoTableSourceScanRule.INSTANCE
+  )
 
   /**
     * RuleSet to prune empty results rules
@@ -195,11 +206,14 @@ object FlinkStreamRuleSets {
     * This RuleSet is a sub-set of [[LOGICAL_OPT_RULES]].
     */
   private val LOGICAL_RULES: RuleSet = RuleSets.ofList(
-    // aggregation and projection rules
-    AggregateProjectMergeRule.INSTANCE,
-    AggregateProjectPullUpConstantsRule.INSTANCE,
+    // scan optimization
+    PushProjectIntoTableSourceScanRule.INSTANCE,
+    PushFilterIntoTableSourceScanRule.INSTANCE,
+
     // reorder sort and projection
     SortProjectTransposeRule.INSTANCE,
+    // remove unnecessary sort rule
+    SortRemoveRule.INSTANCE,
 
     // join rules
     FlinkJoinPushExpressionsRule.INSTANCE,
@@ -209,8 +223,14 @@ object FlinkStreamRuleSets {
     // convert non-all union into all-union + distinct
     UnionToDistinctRule.INSTANCE,
 
+    // aggregation and projection rules
+    AggregateProjectMergeRule.INSTANCE,
+    AggregateProjectPullUpConstantsRule.INSTANCE,
+
     // remove aggregation if it does not aggregate and input is already distinct
-    AggregateRemoveRule.INSTANCE,
+    FlinkAggregateRemoveRule.INSTANCE,
+    // push aggregate through join
+    FlinkAggregateJoinTransposeRule.LEFT_RIGHT_OUTER_JOIN_EXTENDED,
     // using variants of aggregate union rule
     AggregateUnionAggregateRule.AGG_ON_FIRST_INPUT,
     AggregateUnionAggregateRule.AGG_ON_SECOND_INPUT,
@@ -219,11 +239,12 @@ object FlinkStreamRuleSets {
     AggregateReduceFunctionsRule.INSTANCE,
     WindowAggregateReduceFunctionsRule.INSTANCE,
 
+    // reduce useless aggCall
+    PruneAggregateCallRule.PROJECT_ON_AGGREGATE,
+    PruneAggregateCallRule.CALC_ON_AGGREGATE,
+
     // expand grouping sets
     DecomposeGroupingSetsRule.INSTANCE,
-
-    // remove unnecessary sort rule
-    SortRemoveRule.INSTANCE,
 
     // calc rules
     FilterCalcMergeRule.INSTANCE,
@@ -328,6 +349,7 @@ object FlinkStreamRuleSets {
     // join
     StreamExecJoinRule.INSTANCE,
     StreamExecWindowJoinRule.INSTANCE,
+    StreamExecTemporalJoinRule.INSTANCE,
     StreamExecLookupJoinRule.SNAPSHOT_ON_TABLESCAN,
     StreamExecLookupJoinRule.SNAPSHOT_ON_CALC_TABLESCAN,
     // correlate
