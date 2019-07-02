@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.runtime.join;
 
-import org.apache.flink.api.common.functions.AbstractRichFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.operators.StreamOperator;
@@ -36,8 +35,8 @@ import org.apache.flink.table.generated.GeneratedProjection;
 import org.apache.flink.table.generated.JoinCondition;
 import org.apache.flink.table.generated.Projection;
 import org.apache.flink.table.runtime.util.UniformBinaryRowGenerator;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalTypes;
+import org.apache.flink.table.type.RowType;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 import org.apache.flink.util.MutableObjectIterator;
 
@@ -261,9 +260,9 @@ public class Int2HashJoinOperatorTest implements Serializable {
 			int expectOutVal,
 			boolean semiJoin,
 			boolean invokeEndInput) throws Exception {
-		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(new IntType(), new IntType());
+		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(InternalTypes.INT, InternalTypes.INT);
 		BaseRowTypeInfo baseRowType = new BaseRowTypeInfo(
-				new IntType(), new IntType(), new IntType(), new IntType());
+				InternalTypes.INT, InternalTypes.INT, InternalTypes.INT, InternalTypes.INT);
 		TwoInputStreamTaskTestHarness<BinaryRow, BinaryRow, JoinedRow> testHarness =
 			new TwoInputStreamTaskTestHarness<>(TwoInputStreamTask::new,
 				2, 1, new int[]{1, 2}, typeInfo, (TypeInformation) typeInfo, baseRowType);
@@ -410,7 +409,7 @@ public class Int2HashJoinOperatorTest implements Serializable {
 				new GeneratedJoinCondition("", "", new Object[0]) {
 					@Override
 					public JoinCondition newInstance(ClassLoader classLoader) {
-						return new TrueCondition();
+						return (in1, in2) -> true;
 					}
 				},
 				reverseJoinFunction, new boolean[]{true},
@@ -427,17 +426,6 @@ public class Int2HashJoinOperatorTest implements Serializable {
 					}
 				},
 				false, 20, 10000,
-				10000, RowType.of(new IntType()));
-	}
-
-	/**
-	 * Test util.
-	 */
-	public static class TrueCondition extends AbstractRichFunction implements JoinCondition {
-
-		@Override
-		public boolean apply(BaseRow in1, BaseRow in2) {
-			return true;
-		}
+				10000, new RowType(InternalTypes.INT));
 	}
 }

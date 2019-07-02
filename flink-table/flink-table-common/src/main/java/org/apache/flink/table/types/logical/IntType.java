@@ -32,8 +32,6 @@ import java.util.Set;
 @PublicEvolving
 public final class IntType extends LogicalType {
 
-	public static final int PRECISION = 10;
-
 	private static final String FORMAT = "INT";
 
 	private static final Set<String> NULL_OUTPUT_CONVERSION = conversionSet(

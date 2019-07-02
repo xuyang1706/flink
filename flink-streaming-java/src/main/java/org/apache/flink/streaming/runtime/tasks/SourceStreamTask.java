@@ -181,7 +181,7 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 		@Override
 		public void run() {
 			try {
-				headOperator.run(getCheckpointLock(), getStreamStatusMaintainer(), operatorChain);
+				headOperator.run(getCheckpointLock(), getStreamStatusMaintainer());
 			} catch (Throwable t) {
 				sourceExecutionThrowable = t;
 			} finally {

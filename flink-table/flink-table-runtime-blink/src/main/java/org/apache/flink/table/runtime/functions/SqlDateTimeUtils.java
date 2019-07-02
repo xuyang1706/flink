@@ -19,9 +19,8 @@ package org.apache.flink.table.runtime.functions;
 
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.dataformat.Decimal;
-import org.apache.flink.table.types.logical.DateType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.TimestampType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 
 import org.apache.calcite.avatica.util.DateTimeUtils;
 import org.apache.calcite.avatica.util.TimeUnit;
@@ -506,11 +505,8 @@ public class SqlDateTimeUtils {
 		}
 	}
 
-	private static final DateType REUSE_DATE_TYPE = new DateType();
-	private static final TimestampType REUSE_TIMESTAMP_TYPE = new TimestampType(3);
-
 	public static long extractFromDate(TimeUnitRange range, long ts) {
-		return convertExtract(range, ts, REUSE_DATE_TYPE, TimeZone.getTimeZone("UTC"));
+		return convertExtract(range, ts, InternalTypes.DATE, TimeZone.getTimeZone("UTC"));
 	}
 
 	public static long unixTimeExtract(TimeUnitRange range, int ts) {
@@ -518,10 +514,10 @@ public class SqlDateTimeUtils {
 	}
 
 	public static long extractFromTimestamp(TimeUnitRange range, long ts, TimeZone tz) {
-		return convertExtract(range, ts, REUSE_TIMESTAMP_TYPE, tz);
+		return convertExtract(range, ts, InternalTypes.TIMESTAMP, tz);
 	}
 
-	private static long convertExtract(TimeUnitRange range, long ts, LogicalType type, TimeZone tz) {
+	private static long convertExtract(TimeUnitRange range, long ts, InternalType type, TimeZone tz) {
 		TimeUnit startUnit = range.startUnit;
 		long offset = tz.getOffset(ts);
 		long utcTs = ts + offset;
@@ -536,10 +532,10 @@ public class SqlDateTimeUtils {
 			case DOW:
 			case DOY:
 			case WEEK:
-				if (type instanceof TimestampType) {
+				if (type == InternalTypes.TIMESTAMP) {
 					long d = divide(utcTs, TimeUnit.DAY.multiplier);
 					return DateTimeUtils.unixDateExtract(range, d);
-				} else if (type instanceof DateType) {
+				} else if (type == InternalTypes.DATE) {
 					return divide(utcTs, TimeUnit.DAY.multiplier);
 				} else {
 					// TODO support it

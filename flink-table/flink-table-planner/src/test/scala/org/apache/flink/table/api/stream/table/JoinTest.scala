@@ -49,12 +49,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lrtime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rrtime")
           ),
           term("where", "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000))," +
@@ -84,12 +84,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lptime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rptime")
           ),
           term("where", "AND(=(a, d), >=(PROCTIME(lptime), -(PROCTIME(rptime), 1000)), " +
@@ -119,12 +119,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lptime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rptime")
           ),
           term("where", "AND(=(a, d), =(PROCTIME(lptime), PROCTIME(rptime)))"),
@@ -151,8 +151,8 @@ class JoinTest extends TableTestBase {
     val expected =
       binaryNode(
         "DataStreamWindowJoin",
-        streamTableNode(left),
-        streamTableNode(right),
+        streamTableNode(0),
+        streamTableNode(1),
         term("where",
           "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000)), " +
             "<(CAST(lrtime), CAST(rrtime)), >(CAST(lrtime), f))"),
@@ -182,12 +182,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lrtime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rrtime")
           ),
           term("where", "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000))," +
@@ -217,12 +217,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lptime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rptime")
           ),
           term("where", "AND(=(a, d), >=(PROCTIME(lptime), -(PROCTIME(rptime), 1000)), " +
@@ -255,12 +255,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lrtime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rrtime")
           ),
           term("where", "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000))," +
@@ -290,12 +290,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lptime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rptime")
           ),
           term("where", "AND(=(a, d), >=(PROCTIME(lptime), -(PROCTIME(rptime), 1000)), " +
@@ -328,12 +328,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lrtime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rrtime")
           ),
           term("where", "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000))," +
@@ -363,12 +363,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lptime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rptime")
           ),
           term("where", "AND(=(a, d), >=(PROCTIME(lptime), -(PROCTIME(rptime), 1000)), " +
@@ -399,12 +399,12 @@ class JoinTest extends TableTestBase {
           "DataStreamWindowJoin",
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(left),
+            streamTableNode(0),
             term("select", "a", "lrtime")
           ),
           unaryNode(
             "DataStreamCalc",
-            streamTableNode(right),
+            streamTableNode(1),
             term("select", "d", "e", "rrtime")
           ),
           term("where", "AND(=(a, d), >=(CAST(lrtime), -(CAST(rrtime), 300000))," +
@@ -433,12 +433,12 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(s),
+          streamTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "=(a, z)"),
@@ -465,12 +465,12 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(s),
+          streamTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "AND(=(a, z), <(b, 2))"),
@@ -497,10 +497,10 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
-        streamTableNode(s),
+        streamTableNode(1),
         term("where", "AND(=(a, z), <(b, x))"),
         term("join", "a", "b", "x", "y", "z"),
         term("joinType", "LeftOuterJoin")
@@ -525,12 +525,12 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(s),
+          streamTableNode(1),
           term("select", "y", "z")
         ),
         term("where", "=(a, z)"),
@@ -557,12 +557,12 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(s),
+          streamTableNode(1),
           term("select", "x", "z")
         ),
         term("where", "AND(=(a, z), <(x, 2))"),
@@ -589,10 +589,10 @@ class JoinTest extends TableTestBase {
         "DataStreamJoin",
         unaryNode(
           "DataStreamCalc",
-          streamTableNode(t),
+          streamTableNode(0),
           term("select", "a", "b")
         ),
-        streamTableNode(s),
+        streamTableNode(1),
         term("where", "AND(=(a, z), <(b, x))"),
         term("join", "a", "b", "x", "y", "z"),
         term("joinType", "RightOuterJoin")

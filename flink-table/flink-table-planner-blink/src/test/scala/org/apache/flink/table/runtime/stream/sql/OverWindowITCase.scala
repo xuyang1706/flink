@@ -21,12 +21,11 @@ package org.apache.flink.table.runtime.stream.sql
 import org.apache.flink.api.common.time.Time
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.runtime.utils.StreamingWithStateTestBase.StateBackendMode
 import org.apache.flink.table.runtime.utils.TimeTestUtil.EventTimeProcessOperator
+import org.apache.flink.table.runtime.utils.StreamingWithStateTestBase.StateBackendMode
 import org.apache.flink.table.runtime.utils.UserDefinedFunctionTestUtils.{CountNullNonNull, CountPairs, LargerThanCount}
-import org.apache.flink.table.runtime.utils.{StreamingWithStateTestBase, TestData, TestingAppendSink}
+import org.apache.flink.table.runtime.utils.{StreamTestData, StreamingWithStateTestBase, TestingAppendSink}
 import org.apache.flink.types.Row
-
 import org.junit.Assert._
 import org.junit._
 import org.junit.runner.RunWith
@@ -50,7 +49,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeBoundedPartitionedRowsOver(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 
@@ -86,7 +85,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeBoundedPartitionedRowsOverWithBultinProctime(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 
@@ -122,7 +121,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeBoundedPartitionedRowsOverWithBuiltinProctime(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 
@@ -158,7 +157,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeBoundedNonPartitionedRowsOver(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 
@@ -857,7 +856,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeDistinctUnboundedPartitionedRowsOver(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 
@@ -942,7 +941,7 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
 
   @Test
   def testProcTimeDistinctBoundedPartitionedRowsOver(): Unit = {
-    val t = failingDataSource(TestData.tupleData5)
+    val t = failingDataSource(StreamTestData.get5TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'd, 'e, 'proctime)
     tEnv.registerTable("MyTable", t)
 

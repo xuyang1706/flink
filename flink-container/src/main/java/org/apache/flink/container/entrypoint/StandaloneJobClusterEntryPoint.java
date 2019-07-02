@@ -27,7 +27,6 @@ import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerCo
 import org.apache.flink.runtime.entrypoint.component.JobDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.parser.CommandLineParser;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
-import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.resourcemanager.StandaloneResourceManagerFactory;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
@@ -36,8 +35,6 @@ import org.apache.flink.runtime.util.SignalHandler;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.util.Optional;
-
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -45,8 +42,6 @@ import static java.util.Objects.requireNonNull;
  * location.
  */
 public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
-
-	public static final JobID ZERO_JOB_ID = new JobID(0, 0);
 
 	@Nonnull
 	private final JobID jobId;
@@ -102,27 +97,12 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 
 		StandaloneJobClusterEntryPoint entrypoint = new StandaloneJobClusterEntryPoint(
 			configuration,
-			resolveJobIdForCluster(Optional.ofNullable(clusterConfiguration.getJobId()), configuration),
+			clusterConfiguration.getJobId(),
 			clusterConfiguration.getSavepointRestoreSettings(),
 			clusterConfiguration.getArgs(),
 			clusterConfiguration.getJobClassName());
 
 		ClusterEntrypoint.runClusterEntrypoint(entrypoint);
-	}
-
-	@VisibleForTesting
-	@Nonnull
-	static JobID resolveJobIdForCluster(Optional<JobID> optionalJobID, Configuration configuration) {
-		return optionalJobID.orElseGet(() -> createJobIdForCluster(configuration));
-	}
-
-	@Nonnull
-	private static JobID createJobIdForCluster(Configuration globalConfiguration) {
-		if (HighAvailabilityMode.isHighAvailabilityModeActivated(globalConfiguration)) {
-			return ZERO_JOB_ID;
-		} else {
-			return JobID.generate();
-		}
 	}
 
 	@VisibleForTesting

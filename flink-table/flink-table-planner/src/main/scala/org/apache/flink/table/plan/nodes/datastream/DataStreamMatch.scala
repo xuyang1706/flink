@@ -51,7 +51,6 @@ import org.apache.flink.table.plan.nodes.CommonMatchRecognize
 import org.apache.flink.table.plan.rules.datastream.DataStreamRetractionRules
 import org.apache.flink.table.plan.schema.RowSchema
 import org.apache.flink.table.plan.util.RexDefaultVisitor
-import org.apache.flink.table.planner.StreamPlanner
 import org.apache.flink.table.runtime.`match`._
 import org.apache.flink.table.runtime.aggregate.SortUtil
 import org.apache.flink.table.runtime.conversion.CRowToRowMapFunction
@@ -124,18 +123,18 @@ class DataStreamMatch(
   }
 
   override def translateToPlan(
-      planner: StreamPlanner,
+      tableEnv: StreamTableEnvImpl,
       queryConfig: StreamQueryConfig)
     : DataStream[CRow] = {
 
     val inputIsAccRetract = DataStreamRetractionRules.isAccRetract(getInput)
 
-    val config = planner.getConfig
+    val config = tableEnv.config
     val inputTypeInfo = inputSchema.typeInfo
 
     val crowInput: DataStream[CRow] = getInput
       .asInstanceOf[DataStreamRel]
-      .translateToPlan(planner, queryConfig)
+      .translateToPlan(tableEnv, queryConfig)
 
     if (inputIsAccRetract) {
       throw new TableException(
@@ -143,7 +142,7 @@ class DataStreamMatch(
           "Note: Match recognize should not follow a non-windowed GroupBy aggregation.")
     }
 
-    val (timestampedInput, rowComparator) = translateOrder(planner,
+    val (timestampedInput, rowComparator) = translateOrder(tableEnv,
       crowInput,
       logicalMatch.orderKeys)
 
@@ -193,7 +192,7 @@ class DataStreamMatch(
   }
 
   private def translateOrder(
-      planner: StreamPlanner,
+      tableEnv: StreamTableEnvImpl,
       crowInput: DataStream[CRow],
       orderKeys: RelCollation)
     : (DataStream[CRow], Option[RowComparator]) = {
@@ -220,7 +219,7 @@ class DataStreamMatch(
       Some(SortUtil
         .createRowComparator(inputSchema.relDataType,
           orderKeys.getFieldCollations.asScala.tail,
-          planner.getExecutionEnvironment.getConfig))
+          tableEnv.execEnv.getConfig))
     } else {
       None
     }
@@ -373,7 +372,7 @@ private class PatternVisitor(
       pattern.timesOrMore(startNum).consecutive()
     }
 
-    if (greedy && (isOptional || startNum == endNum)) {
+    if (greedy && isOptional) {
       newPattern
     } else if (greedy) {
       newPattern.greedy()

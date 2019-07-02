@@ -17,21 +17,21 @@
  */
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.`type`.{RowType, TypeConverters}
 import org.apache.flink.table.api.StreamTableEnvironment
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.{CodeGeneratorContext, ExpandCodeGenerator}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.calcite.Expand
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rex.RexNode
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -76,12 +76,13 @@ class StreamExecExpand(
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: StreamTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
     val config = tableEnv.getConfig
     val inputTransform = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
-    val inputType = inputTransform.getOutputType.asInstanceOf[BaseRowTypeInfo].toRowType
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
+      .asInstanceOf[StreamTransformation[BaseRow]]
+    val inputType = TypeConverters.createInternalTypeFromTypeInfo(
+      inputTransform.getOutputType).asInstanceOf[RowType]
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
 
     val ctx = CodeGeneratorContext(config)
     val operator = ExpandCodeGenerator.generateExpandOperator(
@@ -94,16 +95,12 @@ class StreamExecExpand(
       retainHeader = true)
 
     val operatorName = s"StreamExecExpand: ${getRowType.getFieldList.map(_.getName).mkString(", ")}"
-    val transform = new OneInputTransformation(
+    new OneInputTransformation(
       inputTransform,
       operatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
-    if (getResource.getMaxParallelism > 0) {
-      transform.setMaxParallelism(getResource.getMaxParallelism)
-    }
-    transform
+      outputType.toTypeInfo,
+      inputTransform.getParallelism)
   }
 
 }

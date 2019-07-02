@@ -21,7 +21,6 @@ import java.io._
 import java.lang.invoke.SerializedLambda
 
 import org.apache.flink.annotation.Internal
-import org.apache.flink.api.common.ExecutionConfig.ClosureCleanerLevel
 import org.apache.flink.api.common.InvalidProgramException
 import org.apache.flink.util.{FlinkException, InstantiationUtil}
 import org.slf4j.LoggerFactory
@@ -158,13 +157,12 @@ object ClosureCleaner {
    *
    * @param closure the closure to clean
    * @param checkSerializable whether to verify that the closure is serializable after cleaning
-   * @param cleanLevel whether to clean enclosing closures transitively
+   * @param cleanTransitively whether to clean enclosing closures transitively
    */
   def clean(
       closure: AnyRef,
       checkSerializable: Boolean = true,
-      cleanLevel: ClosureCleanerLevel = ClosureCleanerLevel.RECURSIVE): Unit = {
-    val cleanTransitively = if (cleanLevel == ClosureCleanerLevel.RECURSIVE) true else false
+      cleanTransitively: Boolean = true): Unit = {
     clean(closure, checkSerializable, cleanTransitively, Map.empty)
   }
 

@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.runtime.utils
 
+import org.apache.flink.api.common.ExecutionConfig
 import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.api.common.io.OutputFormat
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
@@ -29,11 +30,10 @@ import org.apache.flink.runtime.state.{FunctionInitializationContext, FunctionSn
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction
 import org.apache.flink.streaming.api.datastream.{DataStream, DataStreamSink}
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction
-import org.apache.flink.table.api.Types
+import org.apache.flink.table.api.{TableConfig, Types}
 import org.apache.flink.table.dataformat.{BaseRow, DataFormatConverters, GenericRow}
 import org.apache.flink.table.sinks._
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
-import org.apache.flink.table.types.utils.TypeConversions
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.table.util.BaseRowTestUtil
 import org.apache.flink.types.Row
@@ -216,9 +216,8 @@ final class TestingUpsertSink(keys: Array[Int], tz: TimeZone)
       wrapRow.setField(0, d._1)
       wrapRow.setField(1, d._2)
       val converter =
-        DataFormatConverters.getConverterForDataType(
-          TypeConversions.fromLegacyInfoToDataType(
-            new TupleTypeInfo(Types.BOOLEAN, new RowTypeInfo(fieldTypes: _*))))
+        DataFormatConverters.getConverterForTypeInfo(
+          new TupleTypeInfo(Types.BOOLEAN, new RowTypeInfo(fieldTypes: _*)))
           .asInstanceOf[DataFormatConverters.DataFormatConverter[BaseRow, JTuple2[JBoolean, Row]]]
       val v = converter.toExternal(wrapRow)
       val rowString = TestSinkUtil.rowToString(v.f1, tz)
@@ -269,14 +268,13 @@ final class TestingUpsertTableSink(val keys: Array[Int], val tz: TimeZone)
   }
 
   override def getRecordType: TypeInformation[BaseRow] =
-    new BaseRowTypeInfo(fTypes.map(TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType), fNames)
+    new BaseRowTypeInfo(fTypes.map(createInternalTypeFromTypeInfo(_)), fNames)
 
   override def getFieldNames: Array[String] = fNames
 
   override def getFieldTypes: Array[TypeInformation[_]] = fTypes
 
-  override def consumeDataStream(
-      dataStream: DataStream[JTuple2[JBoolean, BaseRow]]): DataStreamSink[_] = {
+  override def emitDataStream(dataStream: DataStream[JTuple2[JBoolean, BaseRow]]) = {
     dataStream.map(new MapFunction[JTuple2[JBoolean, BaseRow], (Boolean, BaseRow)] {
       override def map(value: JTuple2[JBoolean, BaseRow]): (Boolean, BaseRow) = {
         (value.f0, value.f1)
@@ -292,10 +290,6 @@ final class TestingUpsertTableSink(val keys: Array[Int], val tz: TimeZone)
         }
       })")
       .setParallelism(dataStream.getParallelism)
-  }
-
-  override def emitDataStream(dataStream: DataStream[JTuple2[JBoolean, BaseRow]]): Unit = {
-    consumeDataStream(dataStream)
   }
 
   override def configure(
@@ -314,7 +308,8 @@ final class TestingUpsertTableSink(val keys: Array[Int], val tz: TimeZone)
   def getUpsertResults: List[String] = sink.getUpsertResults
 }
 
-final class TestingAppendTableSink(tz: TimeZone) extends AppendStreamTableSink[Row] {
+final class TestingAppendTableSink(tz: TimeZone) extends AppendStreamTableSink[Row]
+  with BatchTableSink[Row] {
   var fNames: Array[String] = _
   var fTypes: Array[TypeInformation[_]] = _
   var sink = new TestingAppendSink(tz)
@@ -324,13 +319,16 @@ final class TestingAppendTableSink(tz: TimeZone) extends AppendStreamTableSink[R
     this(TimeZone.getTimeZone("UTC"))
   }
 
-  override def consumeDataStream(dataStream: DataStream[Row]): DataStreamSink[_] = {
+  override def emitDataStream(dataStream: DataStream[Row]): DataStreamSink[Row] = {
     dataStream.addSink(sink).name("TestingAppendTableSink")
       .setParallelism(dataStream.getParallelism)
   }
 
-  override def emitDataStream(dataStream: DataStream[Row]): Unit = {
-    consumeDataStream(dataStream)
+  override def emitBoundedStream(
+      boundedStream: DataStream[Row],
+      tableConfig: TableConfig,
+      executionConfig: ExecutionConfig): DataStreamSink[Row] = {
+    boundedStream.writeUsingOutputFormat(outputFormat).name("appendTableSink")
   }
 
   override def getOutputType: TypeInformation[Row] = new RowTypeInfo(fTypes, fNames)
@@ -352,7 +350,7 @@ final class TestingAppendTableSink(tz: TimeZone) extends AppendStreamTableSink[R
 
   def getAppendResults: List[String] = sink.getAppendResults
 
-  def getResults: List[String] = sink.getAppendResults
+  def getResults: List[String] = outputFormat.getResults
 }
 
 class TestingOutputFormat[T](tz: TimeZone)
@@ -483,8 +481,7 @@ final class TestingRetractTableSink(tz: TimeZone) extends RetractStreamTableSink
     this(TimeZone.getTimeZone("UTC"))
   }
 
-  override def consumeDataStream(
-      dataStream: DataStream[JTuple2[JBoolean, Row]]): DataStreamSink[_] = {
+  override def emitDataStream(dataStream: DataStream[JTuple2[JBoolean, Row]]) = {
     dataStream.map(new MapFunction[JTuple2[JBoolean, Row], (Boolean, Row)] {
       override def map(value: JTuple2[JBoolean, Row]): (Boolean, Row) = {
         (value.f0, value.f1)
@@ -493,10 +490,6 @@ final class TestingRetractTableSink(tz: TimeZone) extends RetractStreamTableSink
       .addSink(sink)
       .name("TestingRetractTableSink")
       .setParallelism(dataStream.getParallelism)
-  }
-
-  override def emitDataStream(dataStream: DataStream[JTuple2[JBoolean, Row]]): Unit = {
-    consumeDataStream(dataStream)
   }
 
   override def getRecordType: TypeInformation[Row] =

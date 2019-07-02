@@ -19,26 +19,24 @@
 package org.apache.flink.table.plan.nodes.physical.stream
 
 import org.apache.flink.streaming.api.datastream.DataStream
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
 import org.apache.flink.table.api.{StreamTableEnvironment, Table, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.codegen.SinkCodeGenerator.{extractTableSinkTypeClass, generateRowConverterOperator}
 import org.apache.flink.table.codegen.{CodeGenUtils, CodeGeneratorContext}
+import org.apache.flink.table.codegen.SinkCodeGenerator.{extractTableSinkTypeClass, generateRowConverterOperator}
 import org.apache.flink.table.dataformat.BaseRow
-import org.apache.flink.table.plan.`trait`.{AccMode, AccModeTraitDef}
 import org.apache.flink.table.plan.nodes.calcite.Sink
 import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
-import org.apache.flink.table.plan.nodes.resource.NodeResourceConfig
+import org.apache.flink.table.plan.`trait`.{AccMode, AccModeTraitDef}
 import org.apache.flink.table.plan.util.UpdatingPlanChecker
 import org.apache.flink.table.sinks._
-import org.apache.flink.table.types.logical.TimestampType
-import org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo
-import org.apache.flink.table.typeutils.{BaseRowTypeInfo, TypeCheckUtils}
+import org.apache.flink.table.`type`.InternalTypes
+import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.RelNode
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -83,18 +81,18 @@ class StreamExecSink[T](
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: StreamTableEnvironment): Transformation[Any] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[Any] = {
     val resultTransformation = sink match {
       case streamTableSink: StreamTableSink[T] =>
         val transformation = streamTableSink match {
           case _: RetractStreamTableSink[T] =>
-            translateToTransformation(withChangeFlag = true, tableEnv)
+            translateToStreamTransformation(withChangeFlag = true, tableEnv)
 
           case upsertSink: UpsertStreamTableSink[T] =>
             // check for append only table
             val isAppendOnlyTable = UpdatingPlanChecker.isAppendOnly(this)
             upsertSink.setIsAppendOnly(isAppendOnlyTable)
-            translateToTransformation(withChangeFlag = true, tableEnv)
+            translateToStreamTransformation(withChangeFlag = true, tableEnv)
 
           case _: AppendStreamTableSink[T] =>
             // verify table is an insert-only (append-only) table
@@ -108,7 +106,7 @@ class StreamExecSink[T](
               throw new TableException(
                 "AppendStreamTableSink can not be used to output retraction messages.")
             }
-            translateToTransformation(withChangeFlag = false, tableEnv)
+            translateToStreamTransformation(withChangeFlag = false, tableEnv)
 
           case _ =>
             throw new TableException(
@@ -116,57 +114,30 @@ class StreamExecSink[T](
                 "RetractStreamTableSink, or UpsertStreamTableSink.")
         }
         val dataStream = new DataStream(tableEnv.execEnv, transformation)
-        val dsSink = streamTableSink.consumeDataStream(dataStream)
-        if (dsSink == null) {
-          throw new TableException("The StreamTableSink#consumeDataStream(DataStream) must be " +
-            "implemented and return the sink transformation DataStreamSink. " +
-            s"However, ${sink.getClass.getCanonicalName} doesn't implement this method.")
-        }
-        val configSinkParallelism = NodeResourceConfig.getSinkParallelism(
-          tableEnv.getConfig.getConf)
+        streamTableSink.emitDataStream(dataStream).getTransformation
 
-        val maxSinkParallelism = dsSink.getTransformation.getMaxParallelism
-
-        // only set user's parallelism when user defines a sink parallelism
-        if (configSinkParallelism > 0) {
-          // set the parallelism when user's parallelism is not larger than max parallelism or
-          // max parallelism is not set
-          if (maxSinkParallelism < 0 || configSinkParallelism <= maxSinkParallelism) {
-            dsSink.getTransformation.setParallelism(configSinkParallelism)
-          }
-        }
-        if (!UpdatingPlanChecker.isAppendOnly(this) &&
-            dsSink.getTransformation.getParallelism != transformation.getParallelism) {
-          throw new TableException(s"The configured sink parallelism should be equal to the" +
-              " input node when input is an update stream. The input parallelism is " +
-              "${transformation.getParallelism}, however the configured sink parallelism is " +
-              "${dsSink.getTransformation.getParallelism}.")
-        }
-        dsSink.getTransformation
-
-      case dsTableSink: DataStreamTableSink[_] =>
+      case streamTableSink: DataStreamTableSink[_] =>
         // In case of table to stream through BatchTableEnvironment#translateToDataStream,
         // we insert a DataStreamTableSink then wrap it as a LogicalSink, there is no real batch
         // table sink, so we do not need to invoke TableSink#emitBoundedStream and set resource,
-        // just a translation to Transformation is ok.
-        translateToTransformation(dsTableSink.withChangeFlag, tableEnv)
+        // just a translation to StreamTransformation is ok.
+        translateToStreamTransformation(streamTableSink.withChangeFlag, tableEnv)
 
       case _ =>
-        throw new TableException(s"Only Support StreamTableSink! " +
-          s"However ${sink.getClass.getCanonicalName} is not a StreamTableSink.")
+        throw new TableException("Only Support StreamTableSink or DataStreamTableSink!")
     }
-    resultTransformation.asInstanceOf[Transformation[Any]]
+    resultTransformation.asInstanceOf[StreamTransformation[Any]]
   }
 
   /**
-    * Translates a logical [[RelNode]] into a [[Transformation]].
+    * Translates a logical [[RelNode]] into a [[StreamTransformation]].
     *
     * @param withChangeFlag Set to true to emit records with change flags.
-    * @return The [[Transformation]] that corresponds to the translated [[Table]].
+    * @return The [[StreamTransformation]] that corresponds to the translated [[Table]].
     */
-  private def translateToTransformation(
+  private def translateToStreamTransformation(
       withChangeFlag: Boolean,
-      tableEnv: StreamTableEnvironment): Transformation[T] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[T] = {
     val inputNode = getInput
     // if no change flags are requested, verify table is an insert-only (append-only) table.
     if (!withChangeFlag && !UpdatingPlanChecker.isAppendOnly(inputNode)) {
@@ -196,9 +167,9 @@ class StreamExecSink[T](
           s"DataStream by casting all other fields to TIMESTAMP.")
     } else if (rowtimeFields.size == 1) {
       val origRowType = parTransformation.getOutputType.asInstanceOf[BaseRowTypeInfo]
-      val convFieldTypes = origRowType.getLogicalTypes.map { t =>
-        if (TypeCheckUtils.isRowTime(t)) {
-          new TimestampType(3)
+      val convFieldTypes = origRowType.getInternalTypes.map { t =>
+        if (t == InternalTypes.ROWTIME_INDICATOR) {
+          InternalTypes.TIMESTAMP
         } else {
           t
         }
@@ -207,11 +178,10 @@ class StreamExecSink[T](
     } else {
       parTransformation.getOutputType
     }
-    val resultDataType = sink.getConsumedDataType
-    val resultType = fromDataTypeToLegacyInfo(resultDataType)
+    val resultType = sink.getOutputType
     val typeClass = extractTableSinkTypeClass(sink)
-    if (CodeGenUtils.isInternalClass(typeClass, resultDataType)) {
-      parTransformation.asInstanceOf[Transformation[T]]
+    if (CodeGenUtils.isInternalClass(typeClass, resultType)) {
+      parTransformation.asInstanceOf[StreamTransformation[T]]
     } else {
       val (converterOperator, outputTypeInfo) = generateRowConverterOperator[T](
         CodeGeneratorContext(tableEnv.getConfig),

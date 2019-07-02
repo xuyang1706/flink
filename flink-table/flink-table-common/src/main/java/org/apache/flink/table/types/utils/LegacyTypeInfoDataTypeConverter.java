@@ -56,30 +56,25 @@ import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.isRow
 
 /**
  * Converter between {@link TypeInformation} and {@link DataType} that reflects the behavior before
- * Flink 1.9. The conversion is a 1:1 mapping that allows back-and-forth conversion. Note that nullability
- * constraints might get lost during the back-and-forth conversion.
+ * Flink 1.9. The conversion is a 1:1 mapping that allows back-and-forth conversion.
  *
  * <p>This converter only exists to still support deprecated methods that take or return {@link TypeInformation}.
  * Some methods will still support type information in the future, however, the future type information
- * support will integrate nicer with the new type stack.
+ * support will integrate nicer with the new type stack. This converter reflects the old behavior that includes:
  *
- * <p>This converter reflects the old behavior that includes:
+ * <p>Use old {@code java.sql.*} time classes for time data types.
  *
- * <ul>
- *   <li>Use old {@code java.sql.*} time classes for time data types.</li>
+ * <p>Only support millisecond precision for timestamps or day-time intervals.
  *
- *   <li>Only support millisecond precision for timestamps or day-time intervals.</li>
+ * <p>Do not support fractional seconds for the time type.
  *
- *   <li>Let variable precision and scale for decimal types pass through the planner.</li>
+ * <p>Let variable precision and scale for decimal types pass through the planner.
  *
- *   <li>Inconsistent nullability. Most types are nullable even though type information does not support it.</li>
+ * <p>Let POJOs, case classes, and tuples pass through the planner.
  *
- *   <li>Distinction between {@link BasicArrayTypeInfo} and {@link ObjectArrayTypeInfo}.</li>
+ * <p>Inconsistent nullability. Most types are nullable even though type information does not support it.
  *
- *   <li>Let POJOs, case classes, and tuples pass through the planner.</li>
- * </ul>
- *
- * <p>Any changes here need to be applied to the legacy planner as well.
+ * <p>Distinction between {@link BasicArrayTypeInfo} and {@link ObjectArrayTypeInfo}.
  */
 @Internal
 public final class LegacyTypeInfoDataTypeConverter {
@@ -180,9 +175,7 @@ public final class LegacyTypeInfoDataTypeConverter {
 			return convertToTimeAttributeTypeInfo((TimestampType) dataType.getLogicalType());
 		}
 
-		// check in the map but relax the nullability constraint as every not null data type can be
-		// stored in the corresponding nullable type information
-		final TypeInformation<?> foundTypeInfo = dataTypeTypeInfoMap.get(dataType.nullable());
+		final TypeInformation<?> foundTypeInfo = dataTypeTypeInfoMap.get(dataType);
 		if (foundTypeInfo != null) {
 			return foundTypeInfo;
 		}
@@ -215,10 +208,9 @@ public final class LegacyTypeInfoDataTypeConverter {
 
 		throw new TableException(
 			String.format(
-				"Unsupported conversion from data type '%s' (conversion class: %s) to type information. Only data types " +
+				"Unsupported conversion from data type '%s' to type information. Only data types " +
 					"that originated from type information fully support a reverse conversion.",
-				dataType,
-				dataType.getConversionClass().getName()));
+				dataType));
 	}
 
 	private static DataType createLegacyType(LogicalTypeRoot typeRoot, TypeInformation<?> typeInfo) {

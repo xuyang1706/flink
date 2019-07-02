@@ -41,7 +41,6 @@ import org.apache.flink.table.types.logical.NullType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
 import org.apache.flink.table.types.logical.StructuredType;
-import org.apache.flink.table.types.logical.SymbolType;
 import org.apache.flink.table.types.logical.TimeType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TinyIntType;
@@ -188,13 +187,8 @@ public abstract class LogicalTypeDefaultVisitor<R> implements LogicalTypeVisitor
 	}
 
 	@Override
-	public R visit(AnyType<?> anyType) {
+	public R visit(AnyType anyType) {
 		return defaultMethod(anyType);
-	}
-
-	@Override
-	public R visit(SymbolType<?> symbolType) {
-		return defaultMethod(symbolType);
 	}
 
 	@Override

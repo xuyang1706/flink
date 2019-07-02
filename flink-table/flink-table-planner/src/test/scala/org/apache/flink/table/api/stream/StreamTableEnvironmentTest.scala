@@ -26,16 +26,13 @@ import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.{StreamExecutionEnvironment => JStreamExecEnv}
-import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.table.api.java.internal.{StreamTableEnvironmentImpl => JStreamTableEnvironmentImpl}
 import org.apache.flink.table.api.java.{StreamTableEnvironment => JStreamTableEnv}
+import org.apache.flink.table.api.java.{StreamTableEnvImpl => JStreamTableEnvImpl}
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.{TableConfig, Types, ValidationException}
+import org.apache.flink.table.api.{TableConfig, Types}
 import org.apache.flink.table.catalog.{CatalogManager, GenericInMemoryCatalog}
-import org.apache.flink.table.runtime.utils.StreamTestData
-import org.apache.flink.table.utils.TableTestBase
 import org.apache.flink.table.utils.TableTestUtil.{binaryNode, streamTableNode, term, unaryNode}
-import org.apache.flink.types.Row
+import org.apache.flink.table.utils.TableTestBase
 import org.junit.Test
 import org.mockito.Mockito.{mock, when}
 
@@ -50,7 +47,7 @@ class StreamTableEnvironmentTest extends TableTestBase {
 
     val expected = unaryNode(
       "DataStreamCalc",
-      streamTableNode(table),
+      streamTableNode(0),
       term("select", "a, b, c"),
       term("where", ">(b, 12)"))
 
@@ -63,31 +60,12 @@ class StreamTableEnvironmentTest extends TableTestBase {
 
     val expected2 = binaryNode(
       "DataStreamUnion",
-      streamTableNode(table2),
-      streamTableNode(table),
+      streamTableNode(1),
+      streamTableNode(0),
       term("all", "true"),
       term("union all", "d, e, f"))
 
     util.verifyTable(sqlTable2, expected2)
-  }
-
-  @Test
-  def testToAppendSinkOnUpdatingTable(): Unit = {
-    expectedException.expect(classOf[ValidationException])
-    expectedException.expectMessage("Table is not an append-only table. Use the toRetractStream()" +
-      " in order to handle add and retract messages.")
-
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val tEnv = StreamTableEnvironment.create(env)
-
-    val t = StreamTestData.get3TupleDataStream(env).toTable(tEnv, 'id, 'num, 'text)
-
-    t.groupBy('text)
-      .select('text, 'id.count, 'num.sum)
-      .toAppendStream[Row]
-
-    // must fail because table is not append-only
-    env.execute()
   }
 
   @Test
@@ -200,12 +178,12 @@ class StreamTableEnvironmentTest extends TableTestBase {
     val jStreamExecEnv = mock(classOf[JStreamExecEnv])
     when(jStreamExecEnv.getStreamTimeCharacteristic).thenReturn(TimeCharacteristic.EventTime)
     val config = new TableConfig
-    val jTEnv = JStreamTableEnvironmentImpl.create(
+    val jTEnv = new JStreamTableEnvImpl(
+      jStreamExecEnv,
+      config,
       new CatalogManager(
         config.getBuiltInCatalogName,
-        new GenericInMemoryCatalog(config.getBuiltInCatalogName, config.getBuiltInDatabaseName)),
-      config,
-      jStreamExecEnv)
+        new GenericInMemoryCatalog(config.getBuiltInCatalogName, config.getBuiltInDatabaseName)))
 
     val sType = new TupleTypeInfo(Types.LONG, Types.INT, Types.STRING, Types.INT, Types.LONG)
       .asInstanceOf[TupleTypeInfo[JTuple5[JLong, JInt, String, JInt, JLong]]]

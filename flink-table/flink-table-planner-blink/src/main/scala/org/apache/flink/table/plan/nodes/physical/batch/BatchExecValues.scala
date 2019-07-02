@@ -19,19 +19,21 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.BatchTableEnvironment
 import org.apache.flink.table.codegen.ValuesCodeGenerator
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
+
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Values
 import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rex.RexLiteral
-import com.google.common.collect.ImmutableList
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import com.google.common.collect.ImmutableList
+
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -71,16 +73,13 @@ class BatchExecValues(
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val inputFormat = ValuesCodeGenerator.generatorInputFormat(
       tableEnv,
       getRowType,
       tuples,
       getRelTypeName)
-    val transformation = tableEnv.streamEnv.createInput(inputFormat,
-      inputFormat.getProducedType).getTransformation
-    transformation.setParallelism(getResource.getParallelism)
-    transformation
+    tableEnv.streamEnv.createInput(inputFormat, inputFormat.getProducedType).getTransformation
   }
 
 }

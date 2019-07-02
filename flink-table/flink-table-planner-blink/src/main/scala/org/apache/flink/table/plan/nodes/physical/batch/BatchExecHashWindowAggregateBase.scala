@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
 import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.calcite.FlinkTypeFactory
@@ -29,21 +29,19 @@ import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
 import org.apache.flink.table.plan.logical.LogicalWindow
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
-import org.apache.flink.table.plan.nodes.resource.NodeResourceConfig
 import org.apache.flink.table.plan.util.AggregateUtil.transformToBatchAggregateInfoList
 import org.apache.flink.table.plan.util.FlinkRelMdUtil
 import org.apache.flink.table.runtime.CodeGenOperatorFactory
 import org.apache.flink.table.runtime.aggregate.BytesHashMap
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.AggregateCall
 import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.tools.RelBuilder
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -117,12 +115,12 @@ abstract class BatchExecHashWindowAggregateBase(
   def getOperatorName: String
 
   override def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val input = getInputNodes.get(0).translateToPlan(tableEnv)
-        .asInstanceOf[Transformation[BaseRow]]
+        .asInstanceOf[StreamTransformation[BaseRow]]
     val ctx = CodeGeneratorContext(tableEnv.getConfig)
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
-    val inputType = FlinkTypeFactory.toLogicalRowType(inputRowType)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
+    val inputType = FlinkTypeFactory.toInternalRowType(inputRowType)
 
     val aggInfos = transformToBatchAggregateInfoList(
       aggCallToAggFunction.map(_._1), aggInputRowType)
@@ -133,20 +131,22 @@ abstract class BatchExecHashWindowAggregateBase(
     val (windowSize: Long, slideSize: Long) = WindowCodeGenerator.getWindowDef(window)
 
     val reservedManagedMem = tableEnv.config.getConf.getInteger(
-      TableConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MEM) * NodeResourceConfig.SIZE_IN_MB
+      TableConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MEM) * TableConfigOptions.SIZE_IN_MB
+    val maxManagedMem = tableEnv.config.getConf.getInteger(
+      TableConfigOptions.SQL_RESOURCE_HASH_AGG_TABLE_MAX_MEM) * TableConfigOptions.SIZE_IN_MB
 
     val generatedOperator = new HashWindowCodeGenerator(
       ctx, relBuilder, window, inputTimeFieldIndex,
       inputTimeIsDate, namedProperties,
       aggInfos, inputRowType, grouping, auxGrouping, enableAssignPane, isMerge, isFinal).gen(
-      inputType, outputType, groupBufferLimitSize, reservedManagedMem, 0,
+      inputType, outputType, groupBufferLimitSize, reservedManagedMem, maxManagedMem, 0,
       windowSize, slideSize)
     val operator = new CodeGenOperatorFactory[BaseRow](generatedOperator)
     new OneInputTransformation(
       input,
       getOperatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
+      outputType.toTypeInfo,
+      input.getParallelism)
   }
 }

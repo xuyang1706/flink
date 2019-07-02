@@ -24,35 +24,32 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.{TimeCharacteristic, environment}
+import org.apache.flink.table.`type`.{InternalType, TypeConverters}
 import org.apache.flink.table.api._
 import org.apache.flink.table.api.java.{BatchTableEnvironment => JavaBatchTableEnv, StreamTableEnvironment => JavaStreamTableEnv}
 import org.apache.flink.table.api.scala.{BatchTableEnvironment => ScalaBatchTableEnv, StreamTableEnvironment => ScalaStreamTableEnv, _}
 import org.apache.flink.table.calcite.CalciteConfig
-import org.apache.flink.table.catalog.{CatalogManager, GenericInMemoryCatalog}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
-import org.apache.flink.table.operations.RichTableSourceQueryOperation
 import org.apache.flink.table.plan.nodes.exec.ExecNode
 import org.apache.flink.table.plan.optimize.program.{FlinkBatchProgram, FlinkStreamProgram}
-import org.apache.flink.table.plan.stats.FlinkStatistic
+import org.apache.flink.table.plan.schema.{BatchTableSourceTable, StreamTableSourceTable}
+import org.apache.flink.table.plan.stats.{FlinkStatistic, TableStats}
 import org.apache.flink.table.plan.util.{ExecNodePlanDumper, FlinkRelOptUtil}
 import org.apache.flink.table.runtime.utils.{BatchTableEnvUtil, TestingAppendTableSink, TestingRetractTableSink, TestingUpsertTableSink}
-import org.apache.flink.table.sinks._
-import org.apache.flink.table.sources.{StreamTableSource, TableSource}
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromLogicalTypeToTypeInfo
-import org.apache.flink.table.types.logical.LogicalType
-import org.apache.flink.table.types.utils.TypeConversions
+import org.apache.flink.table.sinks.{AppendStreamTableSink, CollectRowTableSink, RetractStreamTableSink, TableSink, UpsertStreamTableSink}
+import org.apache.flink.table.sources.{BatchTableSource, StreamTableSource}
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.types.Row
 
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.sql.SqlExplainLevel
-
 import org.apache.commons.lang3.SystemUtils
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Rule
 import org.junit.rules.{ExpectedException, TestName}
+
+import _root_.java.util.{Set => JSet}
 
 import _root_.scala.collection.JavaConversions._
 
@@ -78,8 +75,8 @@ abstract class TableTestBase {
   def batchTestUtil(): BatchTableTestUtil = BatchTableTestUtil(this)
 
   def verifyTableEquals(expected: Table, actual: Table): Unit = {
-    val expectedString = FlinkRelOptUtil.toString(TableTestUtil.toRelNode(expected))
-    val actualString = FlinkRelOptUtil.toString(TableTestUtil.toRelNode(actual))
+    val expectedString = FlinkRelOptUtil.toString(expected.asInstanceOf[TableImpl].getRelNode)
+    val actualString = FlinkRelOptUtil.toString(actual.asInstanceOf[TableImpl].getRelNode)
     assertEquals(
       "Logical plans do not match",
       LogicalPlanFormatUtils.formatTempTableId(expectedString),
@@ -95,10 +92,10 @@ abstract class TableTestUtil(test: TableTestBase) {
   // scala env
   val env = new StreamExecutionEnvironment(javaEnv)
 
+  protected def getTableEnv: TableEnvironment
+
   // a counter for unique table names
   private var counter = 0
-
-  def getTableEnv: TableEnvironment
 
   /**
     * Create a [[TestTableSource]] with the given schema,
@@ -132,10 +129,12 @@ abstract class TableTestUtil(test: TableTestBase) {
       case at: AtomicType[_] => Array[TypeInformation[_]](at)
       case _ => throw new TableException(s"Unsupported type info: $typeInfo")
     }
-    val dataType = TypeConversions.fromLegacyInfoToDataType(typeInfo)
     val tableEnv = getTableEnv
-    val (fieldNames, _) = tableEnv.getFieldInfo(dataType, fields.map(_.name).toArray)
-    addTableSource(name, fieldTypes, fieldNames)
+    val (fieldNames, _) = tableEnv.getFieldInfo(typeInfo, fields.map(_.name).toArray)
+    val schema = new TableSchema(fieldNames, fieldTypes)
+    val tableSource = new TestTableSource(schema)
+    tableEnv.registerTableSource(name, tableSource)
+    tableEnv.scan(name)
   }
 
   /**
@@ -144,42 +143,17 @@ abstract class TableTestUtil(test: TableTestBase) {
     *
     * @param name table name
     * @param types field types
-    * @param fields field names
-    * @param statistic statistic of current table
+    * @param names field names
+    * @param tableStats table stats
+    * @param uniqueKeys unique keys
     * @return returns the registered [[Table]].
     */
   def addTableSource(
       name: String,
       types: Array[TypeInformation[_]],
-      fields: Array[String],
-      statistic: FlinkStatistic = FlinkStatistic.UNKNOWN): Table = {
-    val tableEnv = getTableEnv
-    val schema = new TableSchema(fields, types)
-    val tableSource = new TestTableSource(tableEnv.isBatch, schema)
-    addTableSource(name, tableSource, statistic)
-  }
-
-  /**
-    * Register this TableSource under given name into the TableEnvironment's catalog.
-    *
-    * @param name table name
-    * @param tableSource table source
-    * @param statistic statistic of current table
-    * @return returns the registered [[Table]].
-    */
-  def addTableSource(
-      name: String,
-      tableSource: TableSource[_],
-      statistic: FlinkStatistic): Table = {
-    val tableEnv = getTableEnv
-    // TODO RichTableSourceQueryOperation should be deleted and use registerTableSource method
-    //  instead of registerTable method here after unique key in TableSchema is ready
-    //  and setting catalog statistic to TableSourceTable in DatabaseCalciteSchema is ready
-    val operation = new RichTableSourceQueryOperation(tableSource, tableEnv.isBatch, statistic)
-    val table = new TableImpl(tableEnv, operation)
-    tableEnv.registerTable(name, table)
-    tableEnv.scan(name)
-  }
+      names: Array[String],
+      tableStats: Option[TableStats] = None,
+      uniqueKeys: Option[JSet[_ <: JSet[String]]] = None): Table
 
   /**
     * Create a [[DataStream]] with the given schema,
@@ -259,7 +233,7 @@ abstract class TableTestUtil(test: TableTestBase) {
 
   def verifyPlanNotExpected(table: Table, notExpected: String*): Unit = {
     require(notExpected.nonEmpty)
-    val relNode = TableTestUtil.toRelNode(table)
+    val relNode = table.asInstanceOf[TableImpl].getRelNode
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES,
@@ -307,7 +281,7 @@ abstract class TableTestUtil(test: TableTestBase) {
       withRowType: Boolean,
       printPlanBefore: Boolean): Unit = {
     val table = getTableEnv.sqlQuery(sql)
-    val relNode = TableTestUtil.toRelNode(table)
+    val relNode = table.asInstanceOf[TableImpl].getRelNode
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel,
@@ -329,18 +303,6 @@ abstract class TableTestUtil(test: TableTestBase) {
     assertEqualsOrExpand("planAfter", actual.toString, expand = false)
   }
 
-  def verifyResource(sql: String): Unit = {
-    assertEqualsOrExpand("sql", sql)
-    val table = getTableEnv.sqlQuery(sql)
-    doVerifyPlan(
-      table,
-      explainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES,
-      withRowType = false,
-      withRetractTraits = false,
-      printResource = true,
-      printPlanBefore = false)
-  }
-
   def doVerifyPlan(
       table: Table,
       explainLevel: SqlExplainLevel,
@@ -359,15 +321,13 @@ abstract class TableTestUtil(test: TableTestBase) {
       explainLevel: SqlExplainLevel,
       withRowType: Boolean,
       withRetractTraits: Boolean,
-      printPlanBefore: Boolean,
-      printResource: Boolean = false): Unit = {
-    val relNode = TableTestUtil.toRelNode(table)
+      printPlanBefore: Boolean): Unit = {
+    val relNode = table.asInstanceOf[TableImpl].getRelNode
     val optimizedPlan = getOptimizedPlan(
       Array(relNode),
       explainLevel,
       withRetractTraits = withRetractTraits,
-      withRowType = withRowType,
-      withResource = printResource)
+      withRowType = withRowType)
 
     if (printPlanBefore) {
       val planBefore = SystemUtils.LINE_SEPARATOR +
@@ -431,8 +391,7 @@ abstract class TableTestUtil(test: TableTestBase) {
       relNodes: Array[RelNode],
       explainLevel: SqlExplainLevel,
       withRetractTraits: Boolean,
-      withRowType: Boolean,
-      withResource: Boolean = false): String = {
+      withRowType: Boolean): String = {
     require(relNodes.nonEmpty)
     val tEnv = getTableEnv
     val optimizedRels = tEnv.optimize(relNodes)
@@ -444,8 +403,7 @@ abstract class TableTestUtil(test: TableTestBase) {
           optimizedNodes,
           detailLevel = explainLevel,
           withRetractTraits = withRetractTraits,
-          withOutputType = withRowType,
-          withResource = withResource)
+          withOutputType = withRowType)
       case _ =>
         optimizedRels.map { rel =>
           FlinkRelOptUtil.toString(
@@ -500,34 +458,37 @@ abstract class TableTestUtil(test: TableTestBase) {
 /**
   * Utility for stream table test.
   */
-case class StreamTableTestUtil(
-    test: TableTestBase,
-    catalogManager: Option[CatalogManager] = None)
-  extends TableTestUtil(test) {
+case class StreamTableTestUtil(test: TableTestBase) extends TableTestUtil(test) {
   javaEnv.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
   env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
-
   // java tableEnv
-  val javaTableEnv: JavaStreamTableEnv = JavaStreamTableEnv.create(
-    javaEnv,
-    tableConfig,
-    catalogManager.getOrElse(TableTestUtil.createCatalogManager(new TableConfig)))
+  val javaTableEnv: JavaStreamTableEnv = JavaStreamTableEnv.create(javaEnv)
   // scala tableEnv
-  val tableEnv: ScalaStreamTableEnv = ScalaStreamTableEnv.create(
-    env,
-    tableConfig,
-    catalogManager.getOrElse(TableTestUtil.createCatalogManager(new TableConfig)))
-
-  private def tableConfig: TableConfig = catalogManager match {
-    case Some(c) => TableTestUtil.extractBuiltinPath(new TableConfig, c)
-    case None => new TableConfig
-  }
+  val tableEnv: ScalaStreamTableEnv = ScalaStreamTableEnv.create(env)
 
   override def getTableEnv: TableEnvironment = tableEnv
 
   override def addDataStream[T: TypeInformation](name: String, fields: Symbol*): Table = {
     val table = env.fromElements[T]().toTable(tableEnv, fields: _*)
     tableEnv.registerTable(name, table)
+    tableEnv.scan(name)
+  }
+
+  override def addTableSource(
+      name: String,
+      types: Array[TypeInformation[_]],
+      names: Array[String],
+      tableStats: Option[TableStats] = None,
+      uniqueKeys: Option[JSet[_ <: JSet[String]]] = None): Table = {
+    val tableEnv = getTableEnv
+    val schema = new TableSchema(names, types)
+    val tableSource = new TestTableSource(schema)
+    val statistic = FlinkStatistic.builder()
+      .tableStats(tableStats.orNull)
+      .uniqueKeys(uniqueKeys.orNull)
+      .build()
+    val table = new StreamTableSourceTable[BaseRow](tableSource, statistic)
+    tableEnv.registerTableInternal(name, table)
     tableEnv.scan(name)
   }
 
@@ -582,26 +543,26 @@ case class StreamTableTestUtil(
 
   def createAppendTableSink(
       fieldNames: Array[String],
-      fieldTypes: Array[LogicalType]): AppendStreamTableSink[Row] = {
+      fieldTypes: Array[InternalType]): AppendStreamTableSink[Row] = {
     require(fieldNames.length == fieldTypes.length)
-    val typeInfos = fieldTypes.map(fromLogicalTypeToTypeInfo)
+    val typeInfos = fieldTypes.map(TypeConverters.createInternalTypeInfoFromInternalType)
     new TestingAppendTableSink().configure(fieldNames, typeInfos)
   }
 
   def createUpsertTableSink(
       keys: Array[Int],
       fieldNames: Array[String],
-      fieldTypes: Array[LogicalType]): UpsertStreamTableSink[BaseRow] = {
+      fieldTypes: Array[InternalType]): UpsertStreamTableSink[BaseRow] = {
     require(fieldNames.length == fieldTypes.length)
-    val typeInfos = fieldTypes.map(fromLogicalTypeToTypeInfo)
+    val typeInfos = fieldTypes.map(TypeConverters.createInternalTypeInfoFromInternalType)
     new TestingUpsertTableSink(keys).configure(fieldNames, typeInfos)
   }
 
   def createRetractTableSink(
       fieldNames: Array[String],
-      fieldTypes: Array[LogicalType]): RetractStreamTableSink[Row] = {
+      fieldTypes: Array[InternalType]): RetractStreamTableSink[Row] = {
     require(fieldNames.length == fieldTypes.length)
-    val typeInfos = fieldTypes.map(fromLogicalTypeToTypeInfo)
+    val typeInfos = fieldTypes.map(TypeConverters.createInternalTypeInfoFromInternalType)
     new TestingRetractTableSink().configure(fieldNames, typeInfos)
   }
 }
@@ -609,24 +570,11 @@ case class StreamTableTestUtil(
 /**
   * Utility for batch table test.
   */
-case class BatchTableTestUtil(
-    test: TableTestBase,
-    catalogManager: Option[CatalogManager] = None) extends TableTestUtil(test) {
+case class BatchTableTestUtil(test: TableTestBase) extends TableTestUtil(test) {
   // java tableEnv
-  val javaTableEnv: JavaBatchTableEnv = JavaBatchTableEnv.create(
-    javaEnv,
-    tableConfig,
-    catalogManager.getOrElse(TableTestUtil.createCatalogManager(new TableConfig)))
+  val javaTableEnv: JavaBatchTableEnv = JavaBatchTableEnv.create(javaEnv)
   // scala tableEnv
-  val tableEnv: ScalaBatchTableEnv = ScalaBatchTableEnv.create(
-    env,
-    tableConfig,
-    catalogManager.getOrElse(TableTestUtil.createCatalogManager(new TableConfig)))
-
-  private def tableConfig: TableConfig = catalogManager match {
-    case Some(c) => TableTestUtil.extractBuiltinPath(new TableConfig, c)
-    case None => new TableConfig
-  }
+  val tableEnv: ScalaBatchTableEnv = ScalaBatchTableEnv.create(env)
 
   override def getTableEnv: TableEnvironment = tableEnv
 
@@ -641,6 +589,24 @@ case class BatchTableTestUtil(
       Seq(),
       typeInfo,
       fields.map(_.name).mkString(", "))
+    tableEnv.scan(name)
+  }
+
+  override def addTableSource(
+      name: String,
+      types: Array[TypeInformation[_]],
+      names: Array[String],
+      tableStats: Option[TableStats] = None,
+      uniqueKeys: Option[JSet[_ <: JSet[String]]] = None): Table = {
+    val tableEnv = getTableEnv
+    val schema = new TableSchema(names, types)
+    val tableSource = new TestTableSource(schema)
+    val statistic = FlinkStatistic.builder()
+      .tableStats(tableStats.orNull)
+      .uniqueKeys(uniqueKeys.orNull)
+      .build()
+    val table = new BatchTableSourceTable[BaseRow](tableSource, statistic)
+    tableEnv.registerTableInternal(name, table)
     tableEnv.scan(name)
   }
 
@@ -663,9 +629,9 @@ case class BatchTableTestUtil(
 
   def createCollectTableSink(
       fieldNames: Array[String],
-      fieldTypes: Array[LogicalType]): TableSink[Row] = {
+      fieldTypes: Array[InternalType]): TableSink[Row] = {
     require(fieldNames.length == fieldTypes.length)
-    val typeInfos = fieldTypes.map(fromLogicalTypeToTypeInfo)
+    val typeInfos = fieldTypes.map(TypeConverters.createInternalTypeInfoFromInternalType)
     new CollectRowTableSink().configure(fieldNames, typeInfos)
   }
 }
@@ -673,10 +639,14 @@ case class BatchTableTestUtil(
 /**
   * Batch/Stream [[org.apache.flink.table.sources.TableSource]] for testing.
   */
-class TestTableSource(isBatch: Boolean, schema: TableSchema)
-  extends StreamTableSource[BaseRow] {
+class TestTableSource(schema: TableSchema)
+  extends BatchTableSource[BaseRow]
+  with StreamTableSource[BaseRow] {
 
-  override def isBounded: Boolean = isBatch
+  override def getBoundedStream(
+      streamEnv: environment.StreamExecutionEnvironment): DataStream[BaseRow] = {
+    streamEnv.fromCollection(List[BaseRow](), getReturnType)
+  }
 
   override def getDataStream(
       execEnv: environment.StreamExecutionEnvironment): DataStream[BaseRow] = {
@@ -684,42 +654,9 @@ class TestTableSource(isBatch: Boolean, schema: TableSchema)
   }
 
   override def getReturnType: TypeInformation[BaseRow] = {
-    val LogicalTypes = schema.getFieldTypes.map(
-      TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType)
-    new BaseRowTypeInfo(LogicalTypes, schema.getFieldNames)
+    val internalTypes = schema.getFieldTypes.map(TypeConverters.createInternalTypeFromTypeInfo)
+    new BaseRowTypeInfo(internalTypes, schema.getFieldNames)
   }
 
   override def getTableSchema: TableSchema = schema
-}
-
-object TableTestUtil {
-
-  /**
-    * Creates a [[CatalogManager]] with a builtin default catalog & database set to values
-    * specified in the [[TableConfig]].
-    */
-  def createCatalogManager(config: TableConfig): CatalogManager = {
-    new CatalogManager(
-      config.getBuiltInCatalogName,
-      new GenericInMemoryCatalog(config.getBuiltInCatalogName, config.getBuiltInDatabaseName))
-  }
-
-  /**
-    * Sets the configuration of the builtin catalog & databases in [[TableConfig]]
-    * to the current catalog & database of the given [[CatalogManager]]. This should be used
-    * to ensure sanity of a [[org.apache.flink.table.api.TableEnvironment]].
-    */
-  def extractBuiltinPath(config: TableConfig, catalogManager: CatalogManager): TableConfig = {
-    config.setBuiltInCatalogName(catalogManager.getCurrentCatalog)
-    config.setBuiltInDatabaseName(catalogManager.getCurrentDatabase)
-    config
-  }
-
-  /**
-    * Converts operation tree in the given table to a RelNode tree.
-    */
-  def toRelNode(table: Table): RelNode = {
-    table.asInstanceOf[TableImpl].tableEnv
-      .getRelBuilder.queryOperation(table.getQueryOperation).build()
-  }
 }

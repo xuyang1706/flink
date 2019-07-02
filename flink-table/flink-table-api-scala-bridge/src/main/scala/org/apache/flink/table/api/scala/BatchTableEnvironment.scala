@@ -226,8 +226,7 @@ object BatchTableEnvironment {
   def create(executionEnvironment: ExecutionEnvironment, tableConfig: TableConfig)
   : BatchTableEnvironment = {
     try {
-      val clazz = Class
-        .forName("org.apache.flink.table.api.scala.internal.BatchTableEnvironmentImpl")
+      val clazz = Class.forName("org.apache.flink.table.api.scala.BatchTableEnvImpl")
       val const = clazz
         .getConstructor(
           classOf[ExecutionEnvironment],

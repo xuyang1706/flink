@@ -19,22 +19,23 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.io.network.ConnectionManager;
-import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferPoolFactory;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.metrics.InputChannelMetrics;
-import org.apache.flink.runtime.io.network.partition.PartitionProducerStateProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
-import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
-import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
+import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.apache.flink.util.function.SupplierWithException;
 
 import org.slf4j.Logger;
@@ -44,16 +45,14 @@ import javax.annotation.Nonnull;
 
 import java.io.IOException;
 
-import static org.apache.flink.runtime.shuffle.ShuffleUtils.applyWithShuffleTypeCheck;
+import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * Factory for {@link SingleInputGate} to use in {@link NettyShuffleEnvironment}.
+ * Factory for {@link SingleInputGate} to use in {@link org.apache.flink.runtime.io.network.NetworkEnvironment}.
  */
 public class SingleInputGateFactory {
-	private static final Logger LOG = LoggerFactory.getLogger(SingleInputGateFactory.class);
-
-	@Nonnull
-	private final ResourceID taskExecutorResourceId;
+	private static final Logger LOG = LoggerFactory.getLogger(SingleInputGate.class);
 
 	private final boolean isCreditBased;
 
@@ -78,13 +77,11 @@ public class SingleInputGateFactory {
 	private final int floatingNetworkBuffersPerGate;
 
 	public SingleInputGateFactory(
-			@Nonnull ResourceID taskExecutorResourceId,
-			@Nonnull NettyShuffleEnvironmentConfiguration networkConfig,
+			@Nonnull NetworkEnvironmentConfiguration networkConfig,
 			@Nonnull ConnectionManager connectionManager,
 			@Nonnull ResultPartitionManager partitionManager,
 			@Nonnull TaskEventPublisher taskEventPublisher,
 			@Nonnull NetworkBufferPool networkBufferPool) {
-		this.taskExecutorResourceId = taskExecutorResourceId;
 		this.isCreditBased = networkConfig.isCreditBased();
 		this.partitionRequestInitialBackoff = networkConfig.partitionRequestInitialBackoff();
 		this.partitionRequestMaxBackoff = networkConfig.partitionRequestMaxBackoff();
@@ -101,75 +98,58 @@ public class SingleInputGateFactory {
 	 */
 	public SingleInputGate create(
 			@Nonnull String owningTaskName,
+			@Nonnull JobID jobId,
 			@Nonnull InputGateDeploymentDescriptor igdd,
-			@Nonnull PartitionProducerStateProvider partitionProducerStateProvider,
-			@Nonnull InputChannelMetrics metrics) {
-		SupplierWithException<BufferPool, IOException> bufferPoolFactory = createBufferPoolFactory(
-			networkBufferPool,
-			isCreditBased,
-			networkBuffersPerChannel,
-			floatingNetworkBuffersPerGate,
-			igdd.getShuffleDescriptors().length,
-			igdd.getConsumedPartitionType());
+			@Nonnull TaskActions taskActions,
+			@Nonnull InputChannelMetrics metrics,
+			@Nonnull Counter numBytesInCounter) {
+		final IntermediateDataSetID consumedResultId = checkNotNull(igdd.getConsumedResultId());
+		final ResultPartitionType consumedPartitionType = checkNotNull(igdd.getConsumedPartitionType());
 
-		SingleInputGate inputGate = new SingleInputGate(
-			owningTaskName,
-			igdd.getConsumedResultId(),
-			igdd.getConsumedPartitionType(),
-			igdd.getConsumedSubpartitionIndex(),
-			igdd.getShuffleDescriptors().length,
-			partitionProducerStateProvider,
-			isCreditBased,
-			bufferPoolFactory);
+		final int consumedSubpartitionIndex = igdd.getConsumedSubpartitionIndex();
+		checkArgument(consumedSubpartitionIndex >= 0);
 
-		createInputChannels(owningTaskName, igdd, inputGate, metrics);
-		return inputGate;
-	}
+		final InputChannelDeploymentDescriptor[] icdd = checkNotNull(igdd.getInputChannelDeploymentDescriptors());
 
-	private void createInputChannels(
-			String owningTaskName,
-			InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
-			SingleInputGate inputGate,
-			InputChannelMetrics metrics) {
-		ShuffleDescriptor[] shuffleDescriptors = inputGateDeploymentDescriptor.getShuffleDescriptors();
+		final SingleInputGate inputGate = new SingleInputGate(
+			owningTaskName, jobId, consumedResultId, consumedPartitionType, consumedSubpartitionIndex,
+			icdd.length, taskActions, numBytesInCounter, isCreditBased,
+			createBufferPoolFactory(icdd.length, consumedPartitionType));
 
 		// Create the input channels. There is one input channel for each consumed partition.
-		InputChannel[] inputChannels = new InputChannel[shuffleDescriptors.length];
+		final InputChannel[] inputChannels = new InputChannel[icdd.length];
 
-		ChannelStatistics channelStatistics = new ChannelStatistics();
+		int numLocalChannels = 0;
+		int numRemoteChannels = 0;
+		int numUnknownChannels = 0;
 
 		for (int i = 0; i < inputChannels.length; i++) {
-			inputChannels[i] = createInputChannel(
-				inputGate,
-				i,
-				shuffleDescriptors[i],
-				channelStatistics,
-				metrics);
-			ResultPartitionID resultPartitionID = inputChannels[i].getPartitionId();
-			inputGate.setInputChannel(resultPartitionID.getPartitionId(), inputChannels[i]);
-		}
+			final ResultPartitionID partitionId = icdd[i].getConsumedPartitionId();
+			final ResultPartitionLocation partitionLocation = icdd[i].getConsumedPartitionLocation();
 
-		LOG.debug("{}: Created {} input channels ({}).",
-			owningTaskName,
-			inputChannels.length,
-			channelStatistics);
-	}
+			if (partitionLocation.isLocal()) {
+				inputChannels[i] = new LocalInputChannel(inputGate, i, partitionId,
+					partitionManager,
+					taskEventPublisher,
+					partitionRequestInitialBackoff,
+					partitionRequestMaxBackoff,
+					metrics);
 
-	private InputChannel createInputChannel(
-			SingleInputGate inputGate,
-			int index,
-			ShuffleDescriptor shuffleDescriptor,
-			ChannelStatistics channelStatistics,
-			InputChannelMetrics metrics) {
-		return applyWithShuffleTypeCheck(
-			NettyShuffleDescriptor.class,
-			shuffleDescriptor,
-			unknownShuffleDescriptor -> {
-				channelStatistics.numUnknownChannels++;
-				return new UnknownInputChannel(
-					inputGate,
-					index,
-					unknownShuffleDescriptor.getResultPartitionID(),
+				numLocalChannels++;
+			}
+			else if (partitionLocation.isRemote()) {
+				inputChannels[i] = new RemoteInputChannel(inputGate, i, partitionId,
+					partitionLocation.getConnectionId(),
+					connectionManager,
+					partitionRequestInitialBackoff,
+					partitionRequestMaxBackoff,
+					metrics,
+					networkBufferPool);
+
+				numRemoteChannels++;
+			}
+			else if (partitionLocation.isUnknown()) {
+				inputChannels[i] = new UnknownInputChannel(inputGate, i, partitionId,
 					partitionManager,
 					taskEventPublisher,
 					connectionManager,
@@ -177,81 +157,51 @@ public class SingleInputGateFactory {
 					partitionRequestMaxBackoff,
 					metrics,
 					networkBufferPool);
-			},
-			nettyShuffleDescriptor ->
-				createKnownInputChannel(
-					inputGate,
-					index,
-					nettyShuffleDescriptor,
-					channelStatistics,
-					metrics));
+
+				numUnknownChannels++;
+			}
+			else {
+				throw new IllegalStateException("Unexpected partition location.");
+			}
+
+			inputGate.setInputChannel(partitionId.getPartitionId(), inputChannels[i]);
+		}
+
+		LOG.debug("{}: Created {} input channels (local: {}, remote: {}, unknown: {}).",
+			owningTaskName,
+			inputChannels.length,
+			numLocalChannels,
+			numRemoteChannels,
+			numUnknownChannels);
+
+		return inputGate;
 	}
 
-	private InputChannel createKnownInputChannel(
-			SingleInputGate inputGate,
-			int index,
-			NettyShuffleDescriptor inputChannelDescriptor,
-			ChannelStatistics channelStatistics,
-			InputChannelMetrics metrics) {
-		ResultPartitionID partitionId = inputChannelDescriptor.getResultPartitionID();
-		if (inputChannelDescriptor.isLocalTo(taskExecutorResourceId)) {
-			// Consuming task is deployed to the same TaskManager as the partition => local
-			channelStatistics.numLocalChannels++;
-			return new LocalInputChannel(
-				inputGate,
-				index,
-				partitionId,
-				partitionManager,
-				taskEventPublisher,
-				partitionRequestInitialBackoff,
-				partitionRequestMaxBackoff,
-				metrics);
-		} else {
-			// Different instances => remote
-			channelStatistics.numRemoteChannels++;
-			return new RemoteInputChannel(
-				inputGate,
-				index,
-				partitionId,
-				inputChannelDescriptor.getConnectionId(),
-				connectionManager,
-				partitionRequestInitialBackoff,
-				partitionRequestMaxBackoff,
-				metrics,
-				networkBufferPool);
-		}
+	private SupplierWithException<BufferPool, IOException> createBufferPoolFactory(int size, ResultPartitionType type) {
+		return createBufferPoolFactory(
+			networkBufferPool, isCreditBased, networkBuffersPerChannel, floatingNetworkBuffersPerGate, size, type);
 	}
 
 	@VisibleForTesting
 	static SupplierWithException<BufferPool, IOException> createBufferPoolFactory(
-			BufferPoolFactory bufferPoolFactory,
-			boolean isCreditBased,
-			int networkBuffersPerChannel,
-			int floatingNetworkBuffersPerGate,
-			int size,
-			ResultPartitionType type) {
+		BufferPoolFactory bufferPoolFactory,
+		boolean isCreditBased,
+		int networkBuffersPerChannel,
+		int floatingNetworkBuffersPerGate,
+		int size,
+		ResultPartitionType type) {
+
 		if (isCreditBased) {
-			int maxNumberOfMemorySegments = type.isBounded() ? floatingNetworkBuffersPerGate : Integer.MAX_VALUE;
+			int maxNumberOfMemorySegments = type.isBounded() ?
+				floatingNetworkBuffersPerGate : Integer.MAX_VALUE;
+
 			return () -> bufferPoolFactory.createBufferPool(0, maxNumberOfMemorySegments);
 		} else {
 			int maxNumberOfMemorySegments = type.isBounded() ?
-				size * networkBuffersPerChannel + floatingNetworkBuffersPerGate : Integer.MAX_VALUE;
+				size * networkBuffersPerChannel +
+					floatingNetworkBuffersPerGate : Integer.MAX_VALUE;
+
 			return () -> bufferPoolFactory.createBufferPool(size, maxNumberOfMemorySegments);
-		}
-	}
-
-	private static class ChannelStatistics {
-		int numLocalChannels;
-		int numRemoteChannels;
-		int numUnknownChannels;
-
-		@Override
-		public String toString() {
-			return String.format(
-				"local: %s, remote: %s, unknown: %s",
-				numLocalChannels,
-				numRemoteChannels,
-				numUnknownChannels);
 		}
 	}
 }

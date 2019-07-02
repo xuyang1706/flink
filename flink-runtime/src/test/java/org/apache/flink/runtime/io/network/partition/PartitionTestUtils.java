@@ -18,22 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
-import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.shuffle.PartitionDescriptor;
-import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
-import org.apache.flink.runtime.util.NettyShuffleDescriptorBuilder;
-
-import org.hamcrest.Matchers;
-
-import java.io.IOException;
-import java.util.EnumSet;
-import java.util.Optional;
-
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import org.apache.flink.runtime.io.network.NetworkEnvironment;
 
 /**
  * This class should consolidate all mocking logic for ResultPartitions.
@@ -51,88 +36,24 @@ public class PartitionTestUtils {
 	}
 
 	public static ResultPartition createPartition(
-			NettyShuffleEnvironment environment,
-			ResultPartitionType partitionType,
-			int numChannels) {
+			ResultPartitionConsumableNotifier notifier,
+			ResultPartitionType type,
+			boolean sendScheduleOrUpdateConsumersMessage) {
 		return new ResultPartitionBuilder()
-			.setupBufferPoolFactoryFromNettyShuffleEnvironment(environment)
-			.setResultPartitionType(partitionType)
-			.setNumberOfSubpartitions(numChannels)
+			.setResultPartitionConsumableNotifier(notifier)
+			.setResultPartitionType(type)
+			.setSendScheduleOrUpdateConsumersMessage(sendScheduleOrUpdateConsumersMessage)
 			.build();
 	}
 
-	static void verifyCreateSubpartitionViewThrowsException(
-			ResultPartitionManager partitionManager,
-			ResultPartitionID partitionId) throws IOException {
-		try {
-			partitionManager.createSubpartitionView(partitionId, 0, new NoOpBufferAvailablityListener());
-
-			fail("Should throw a PartitionNotFoundException.");
-		} catch (PartitionNotFoundException notFound) {
-			assertThat(partitionId, Matchers.is(notFound.getPartitionId()));
-		}
-	}
-
-	public static ResultPartitionDeploymentDescriptor createPartitionDeploymentDescriptor(ResultPartitionType partitionType) {
-		ShuffleDescriptor shuffleDescriptor = NettyShuffleDescriptorBuilder.newBuilder().setBlocking(partitionType.isBlocking()).buildLocal();
-		PartitionDescriptor partitionDescriptor = new PartitionDescriptor(
-			new IntermediateDataSetID(),
-			shuffleDescriptor.getResultPartitionID().getPartitionId(),
-			partitionType,
-			1,
-			0);
-		return new ResultPartitionDeploymentDescriptor(
-			partitionDescriptor,
-			shuffleDescriptor,
-			1,
-			true);
-	}
-
-	public static ResultPartitionDeploymentDescriptor createPartitionDeploymentDescriptor(ShuffleDescriptor.ReleaseType releaseType) {
-		// set partition to blocking to support all release types
-		ShuffleDescriptor shuffleDescriptor = NettyShuffleDescriptorBuilder.newBuilder().setBlocking(true).buildLocal();
-		PartitionDescriptor partitionDescriptor = new PartitionDescriptor(
-			new IntermediateDataSetID(),
-			shuffleDescriptor.getResultPartitionID().getPartitionId(),
-			ResultPartitionType.BLOCKING,
-			1,
-			0);
-		return new ResultPartitionDeploymentDescriptor(
-			partitionDescriptor,
-			shuffleDescriptor,
-			1,
-			true,
-			releaseType);
-	}
-
-	public static ResultPartitionDeploymentDescriptor createResultPartitionDeploymentDescriptor(ResultPartitionID resultPartitionId, ShuffleDescriptor.ReleaseType releaseType, boolean hasLocalResources) {
-		return new ResultPartitionDeploymentDescriptor(
-			new PartitionDescriptor(
-				new IntermediateDataSetID(),
-				resultPartitionId.getPartitionId(),
-				ResultPartitionType.BLOCKING,
-				1,
-				0),
-			new ShuffleDescriptor() {
-				@Override
-				public ResultPartitionID getResultPartitionID() {
-					return resultPartitionId;
-				}
-
-				@Override
-				public Optional<ResourceID> storesLocalResourcesOn() {
-					return hasLocalResources
-						? Optional.of(ResourceID.generate())
-						: Optional.empty();
-				}
-
-				@Override
-				public EnumSet<ReleaseType> getSupportedReleaseTypes() {
-					return EnumSet.of(releaseType);
-				}
-			},
-			1,
-			true,
-			releaseType);
+	public static ResultPartition createPartition(
+			NetworkEnvironment environment,
+			ResultPartitionType partitionType,
+			int numChannels) {
+		return new ResultPartitionBuilder()
+			.setupBufferPoolFactoryFromNetworkEnvironment(environment)
+			.setResultPartitionType(partitionType)
+			.setNumberOfSubpartitions(numChannels)
+			.build();
 	}
 }

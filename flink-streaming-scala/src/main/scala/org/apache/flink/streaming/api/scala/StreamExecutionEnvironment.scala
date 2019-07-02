@@ -683,7 +683,7 @@ class StreamExecutionEnvironment(javaEnv: JavaEnv) {
    */
   private[flink] def scalaClean[F <: AnyRef](f: F): F = {
     if (getConfig.isClosureCleanerEnabled) {
-      ClosureCleaner.clean(f, true, getConfig.getClosureCleanerLevel)
+      ClosureCleaner.clean(f, true)
     } else {
       ClosureCleaner.ensureSerializable(f)
     }

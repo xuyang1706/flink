@@ -46,7 +46,6 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
 import org.apache.flink.table.types.logical.StructuredType;
 import org.apache.flink.table.types.logical.StructuredType.StructuredAttribute;
-import org.apache.flink.table.types.logical.SymbolType;
 import org.apache.flink.table.types.logical.TimeType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.TinyIntType;
@@ -231,13 +230,8 @@ public final class LogicalTypeDataTypeConverter {
 		}
 
 		@Override
-		public DataType visit(AnyType<?> anyType) {
+		public DataType visit(AnyType anyType) {
 			return new AtomicDataType(anyType);
-		}
-
-		@Override
-		public DataType visit(SymbolType<?> symbolType) {
-			return new AtomicDataType(symbolType);
 		}
 
 		@Override

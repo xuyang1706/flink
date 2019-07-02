@@ -33,7 +33,7 @@ import org.apache.flink.table.dataview.PerKeyStateDataViewStore;
 import org.apache.flink.table.generated.AggsHandleFunction;
 import org.apache.flink.table.generated.GeneratedAggsHandleFunction;
 import org.apache.flink.table.runtime.functions.KeyedProcessFunctionWithCleanupState;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
@@ -62,8 +62,8 @@ public class ProcTimeRowsBoundedPrecedingFunction<K> extends KeyedProcessFunctio
 	private static final Logger LOG = LoggerFactory.getLogger(ProcTimeRowsBoundedPrecedingFunction.class);
 
 	private final GeneratedAggsHandleFunction genAggsHandler;
-	private final LogicalType[] accTypes;
-	private final LogicalType[] inputFieldTypes;
+	private final InternalType[] accTypes;
+	private final InternalType[] inputFieldTypes;
 	private final long precedingOffset;
 
 	private transient AggsHandleFunction function;
@@ -79,8 +79,8 @@ public class ProcTimeRowsBoundedPrecedingFunction<K> extends KeyedProcessFunctio
 			long minRetentionTime,
 			long maxRetentionTime,
 			GeneratedAggsHandleFunction genAggsHandler,
-			LogicalType[] accTypes,
-			LogicalType[] inputFieldTypes,
+			InternalType[] accTypes,
+			InternalType[] inputFieldTypes,
 			long precedingOffset) {
 		super(minRetentionTime, maxRetentionTime);
 		Preconditions.checkArgument(precedingOffset > 0);
@@ -220,7 +220,7 @@ public class ProcTimeRowsBoundedPrecedingFunction<K> extends KeyedProcessFunctio
 			long timestamp,
 			KeyedProcessFunction<K, BaseRow, BaseRow>.OnTimerContext ctx,
 			Collector<BaseRow> out) throws Exception {
-		if (stateCleaningEnabled) {
+		if (needToCleanupState(timestamp)) {
 			cleanupState(inputState, accState, counterState, smallestTsState);
 			function.cleanup();
 		}

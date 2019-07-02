@@ -38,11 +38,7 @@ public class TestingSchedulerOperations implements SchedulerOperations {
 		scheduledVertices.add(executionVertexDeploymentOptions);
 	}
 
-	List<Collection<ExecutionVertexDeploymentOption>> getScheduledVertices() {
+	public List<Collection<ExecutionVertexDeploymentOption>> getScheduledVertices() {
 		return Collections.unmodifiableList(scheduledVertices);
-	}
-
-	Collection<ExecutionVertexDeploymentOption> getLatestScheduledVertices() {
-		return Collections.unmodifiableCollection(scheduledVertices.get(scheduledVertices.size() - 1));
 	}
 }

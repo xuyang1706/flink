@@ -43,7 +43,6 @@ import org.apache.flink.runtime.executiongraph.metrics.NumberOfFullRestartsGauge
 import org.apache.flink.runtime.executiongraph.metrics.RestartTimeGauge;
 import org.apache.flink.runtime.executiongraph.metrics.UpTimeGauge;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
-import org.apache.flink.runtime.io.network.partition.PartitionTracker;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -51,7 +50,6 @@ import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
-import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
 import org.apache.flink.util.DynamicCodeLoadingException;
@@ -94,9 +92,8 @@ public class ExecutionGraphBuilder {
 			MetricGroup metrics,
 			BlobWriter blobWriter,
 			Time allocationTimeout,
-			Logger log,
-			ShuffleMaster<?> shuffleMaster,
-			PartitionTracker partitionTracker) throws JobExecutionException, JobException {
+			Logger log)
+		throws JobExecutionException, JobException {
 
 		checkNotNull(jobGraph, "job graph cannot be null");
 
@@ -117,9 +114,6 @@ public class ExecutionGraphBuilder {
 		final int maxPriorAttemptsHistoryLength =
 				jobManagerConfig.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE);
 
-		final boolean forcePartitionReleaseOnConsumption =
-			jobManagerConfig.getBoolean(JobManagerOptions.FORCE_PARTITION_RELEASE_ON_CONSUMPTION);
-
 		// create a new execution graph, if none exists so far
 		final ExecutionGraph executionGraph;
 		try {
@@ -135,10 +129,7 @@ public class ExecutionGraphBuilder {
 					slotProvider,
 					classLoader,
 					blobWriter,
-					allocationTimeout,
-					shuffleMaster,
-					forcePartitionReleaseOnConsumption,
-					partitionTracker);
+					allocationTimeout);
 		} catch (IOException e) {
 			throw new JobException("Could not create the ExecutionGraph.", e);
 		}
@@ -298,7 +289,11 @@ public class ExecutionGraphBuilder {
 			final CheckpointCoordinatorConfiguration chkConfig = snapshotSettings.getCheckpointCoordinatorConfiguration();
 
 			executionGraph.enableCheckpointing(
-				chkConfig,
+				chkConfig.getCheckpointInterval(),
+				chkConfig.getCheckpointTimeout(),
+				chkConfig.getMinPauseBetweenCheckpoints(),
+				chkConfig.getMaxConcurrentCheckpoints(),
+				chkConfig.getCheckpointRetentionPolicy(),
 				triggerVertices,
 				ackVertices,
 				confirmVertices,
@@ -306,7 +301,8 @@ public class ExecutionGraphBuilder {
 				checkpointIdCounter,
 				completedCheckpoints,
 				rootBackend,
-				checkpointStatsTracker);
+				checkpointStatsTracker,
+				chkConfig.isPreferCheckpointForRecovery());
 		}
 
 		// create all the metrics for the Execution Graph

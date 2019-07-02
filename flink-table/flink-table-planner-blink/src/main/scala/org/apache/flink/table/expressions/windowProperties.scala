@@ -18,11 +18,11 @@
 
 package org.apache.flink.table.expressions
 
+import org.apache.flink.table.`type`.{InternalType, InternalTypes, TimestampType}
 import org.apache.flink.table.api.TableException
-import org.apache.flink.table.types.logical.{BigIntType, LogicalType, TimestampKind, TimestampType}
 
 trait WindowProperty {
-  def resultType: LogicalType
+  def resultType: InternalType
 }
 
 abstract class AbstractWindowProperty(reference: WindowReference) extends WindowProperty {
@@ -32,37 +32,35 @@ abstract class AbstractWindowProperty(reference: WindowReference) extends Window
 /**
   * Indicate timeField type.
   */
-case class WindowReference(name: String, tpe: Option[LogicalType] = None) {
+case class WindowReference(name: String, tpe: Option[InternalType] = None) {
   override def toString: String = s"'$name"
 }
 
 case class WindowStart(reference: WindowReference) extends AbstractWindowProperty(reference) {
 
-  override def resultType: TimestampType = new TimestampType(3)
+  override def resultType: TimestampType = InternalTypes.TIMESTAMP
 
   override def toString: String = s"start($reference)"
 }
 
 case class WindowEnd(reference: WindowReference) extends AbstractWindowProperty(reference) {
 
-  override def resultType: TimestampType = new TimestampType(3)
+  override def resultType: TimestampType = InternalTypes.TIMESTAMP
 
   override def toString: String = s"end($reference)"
 }
 
 case class RowtimeAttribute(reference: WindowReference) extends AbstractWindowProperty(reference) {
 
-  override def resultType: LogicalType = {
+  override def resultType: InternalType = {
     reference match {
-      case WindowReference(_, Some(tpe))
-        if tpe.isInstanceOf[TimestampType] &&
-            tpe.asInstanceOf[TimestampType].getKind == TimestampKind.ROWTIME =>
+      case WindowReference(_, Some(tpe)) if tpe == InternalTypes.ROWTIME_INDICATOR =>
         // rowtime window
-        new TimestampType(true, TimestampKind.ROWTIME, 3)
+        InternalTypes.ROWTIME_INDICATOR
       case WindowReference(_, Some(tpe))
-        if tpe.isInstanceOf[BigIntType] || tpe.isInstanceOf[TimestampType] =>
+        if tpe == InternalTypes.LONG || tpe == InternalTypes.TIMESTAMP =>
         // batch time window
-        new TimestampType(3)
+        InternalTypes.TIMESTAMP
       case _ =>
         throw new TableException("WindowReference of RowtimeAttribute has invalid type. " +
             "Please report this bug.")
@@ -75,8 +73,7 @@ case class RowtimeAttribute(reference: WindowReference) extends AbstractWindowPr
 case class ProctimeAttribute(reference: WindowReference)
   extends AbstractWindowProperty(reference) {
 
-  override def resultType: LogicalType =
-    new TimestampType(true, TimestampKind.PROCTIME, 3)
+  override def resultType: InternalType = InternalTypes.PROCTIME_INDICATOR
 
   override def toString: String = s"proctime($reference)"
 }

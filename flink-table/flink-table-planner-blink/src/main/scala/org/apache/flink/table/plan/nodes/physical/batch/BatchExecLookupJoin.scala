@@ -23,14 +23,14 @@ import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.{JoinInfo, JoinRelType}
 import org.apache.calcite.rex.RexProgram
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.common.CommonLookupJoin
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.sources.TableSource
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -85,16 +85,18 @@ class BatchExecLookupJoin(
   }
 
   override protected def translateToPlanInternal(
-    tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+    tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
 
     val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
+      .asInstanceOf[StreamTransformation[BaseRow]]
+    val defaultParallelism = tableEnv.getConfig.getConf
+      .getInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM)
     val transformation = translateToPlanInternal(
       inputTransformation,
       tableEnv.streamEnv,
       tableEnv.config,
       tableEnv.getRelBuilder)
-    transformation.setParallelism(getResource.getParallelism)
+    transformation.setParallelism(defaultParallelism)
     transformation
   }
 }

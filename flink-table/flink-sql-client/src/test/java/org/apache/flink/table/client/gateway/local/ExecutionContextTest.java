@@ -23,19 +23,15 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.client.cli.DefaultCLI;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.Types;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
-import org.apache.flink.table.catalog.Catalog;
-import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.flink.table.client.config.Environment;
 import org.apache.flink.table.client.gateway.SessionContext;
 import org.apache.flink.table.client.gateway.utils.DummyTableSourceFactory;
 import org.apache.flink.table.client.gateway.utils.EnvironmentFileUtil;
 import org.apache.flink.table.sinks.TableSink;
 import org.apache.flink.table.sources.TableSource;
-import org.apache.flink.util.StringUtils;
 
 import org.apache.commons.cli.Options;
 import org.junit.Test;
@@ -45,12 +41,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -80,76 +73,12 @@ public class ExecutionContextTest {
 
 	@Test
 	public void testCatalogs() throws Exception {
-		final String inmemoryCatalog = "inmemorycatalog";
-		final String hiveCatalog = "hivecatalog";
-		final String hiveDefaultVersionCatalog = "hivedefaultversion";
-
+		final String catalogName = "catalog1";
 		final ExecutionContext<?> context = createCatalogExecutionContext();
 		final TableEnvironment tableEnv = context.createEnvironmentInstance().getTableEnvironment();
 
-		assertEquals(inmemoryCatalog, tableEnv.getCurrentCatalog());
-		assertEquals("mydatabase", tableEnv.getCurrentDatabase());
-
-		Catalog catalog = tableEnv.getCatalog(hiveCatalog).orElse(null);
-		assertNotNull(catalog);
-		assertTrue(catalog instanceof HiveCatalog);
-		assertEquals("2.3.4", ((HiveCatalog) catalog).getHiveVersion());
-
-		catalog = tableEnv.getCatalog(hiveDefaultVersionCatalog).orElse(null);
-		assertNotNull(catalog);
-		assertTrue(catalog instanceof HiveCatalog);
-		// make sure we have assigned a default hive version
-		assertFalse(StringUtils.isNullOrWhitespaceOnly(((HiveCatalog) catalog).getHiveVersion()));
-
-		tableEnv.useCatalog(hiveCatalog);
-
-		assertEquals(hiveCatalog, tableEnv.getCurrentCatalog());
-
-		Set<String> allCatalogs = new HashSet<>(Arrays.asList(tableEnv.listCatalogs()));
-		assertEquals(6, allCatalogs.size());
-		assertEquals(
-			new HashSet<>(
-				Arrays.asList(
-					TableConfig.getDefault().getBuiltInCatalogName(),
-					inmemoryCatalog,
-					hiveCatalog,
-					hiveDefaultVersionCatalog,
-					"catalog1",
-					"catalog2")
-			),
-			allCatalogs
-		);
-	}
-
-	@Test
-	public void testDatabases() throws Exception {
-		final String hiveCatalog = "hivecatalog";
-
-		final ExecutionContext<?> context = createCatalogExecutionContext();
-		final TableEnvironment tableEnv = context.createEnvironmentInstance().getTableEnvironment();
-
-		assertEquals(1, tableEnv.listDatabases().length);
-		assertEquals("mydatabase", tableEnv.listDatabases()[0]);
-
-		tableEnv.useCatalog(hiveCatalog);
-
-		assertEquals(2, tableEnv.listDatabases().length);
-		assertEquals(
-			new HashSet<>(
-				Arrays.asList(
-					HiveCatalog.DEFAULT_DB,
-					DependencyTest.TestHiveCatalogFactory.ADDITIONAL_TEST_DATABASE)
-			),
-			new HashSet<>(Arrays.asList(tableEnv.listDatabases()))
-		);
-
-		tableEnv.useCatalog(hiveCatalog);
-
-		assertEquals(HiveCatalog.DEFAULT_DB, tableEnv.getCurrentDatabase());
-
-		tableEnv.useDatabase(DependencyTest.TestHiveCatalogFactory.ADDITIONAL_TEST_DATABASE);
-
-		assertEquals(DependencyTest.TestHiveCatalogFactory.ADDITIONAL_TEST_DATABASE, tableEnv.getCurrentDatabase());
+		assertEquals(tableEnv.getCurrentCatalog(), catalogName);
+		assertEquals(tableEnv.getCurrentDatabase(), "mydatabase");
 	}
 
 	@Test
@@ -195,11 +124,11 @@ public class ExecutionContextTest {
 
 		assertArrayEquals(
 			new String[]{"BooleanField", "StringField"},
-			sinks.get("TableSourceSink").getTableSchema().getFieldNames());
+			sinks.get("TableSourceSink").getFieldNames());
 
 		assertArrayEquals(
 			new TypeInformation[]{Types.BOOLEAN(), Types.STRING()},
-			sinks.get("TableSourceSink").getTableSchema().getFieldTypes());
+			sinks.get("TableSourceSink").getFieldTypes());
 
 		final TableEnvironment tableEnv = context.createEnvironmentInstance().getTableEnvironment();
 

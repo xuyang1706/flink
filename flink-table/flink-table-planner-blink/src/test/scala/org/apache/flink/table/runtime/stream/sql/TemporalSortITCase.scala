@@ -123,7 +123,7 @@ class TemporalSortITCase(mode: StateBackendMode) extends StreamingWithStateTestB
 
   @Test
   def testProcTimeOrderBy(): Unit = {
-    val t = failingDataSource(TestData.tupleData3)
+    val t = failingDataSource(StreamTestData.get3TupleData)
       .toTable(tEnv, 'a, 'b, 'c, 'proctime)
     tEnv.registerTable("T", t)
 

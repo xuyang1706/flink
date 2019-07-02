@@ -85,7 +85,7 @@ public abstract class KeyedProcessFunctionWithCleanupState<K, IN, OUT>
 		if (stateCleaningEnabled) {
 			Long cleanupTime = cleanupTimeState.value();
 			// check that the triggered timer is the last registered processing time timer.
-			return timestamp.equals(cleanupTime);
+			return null != cleanupTime && timestamp == cleanupTime;
 		} else {
 			return false;
 		}

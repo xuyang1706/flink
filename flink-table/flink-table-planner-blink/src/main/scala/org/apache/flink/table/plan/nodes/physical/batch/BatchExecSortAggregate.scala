@@ -18,11 +18,13 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.{PlannerConfigOptions, TableConfig}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.`trait`.{FlinkRelDistribution, FlinkRelDistributionTraitDef}
 import org.apache.flink.table.plan.util.{FlinkRelOptUtil, RelExplainUtil}
+
 import org.apache.calcite.plan.{RelOptCluster, RelOptRule, RelTraitSet}
 import org.apache.calcite.rel.RelDistribution.Type.{HASH_DISTRIBUTED, SINGLETON}
 import org.apache.calcite.rel._
@@ -30,9 +32,8 @@ import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.AggregateCall
 import org.apache.calcite.tools.RelBuilder
 import org.apache.calcite.util.{ImmutableIntList, Util}
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -166,6 +167,10 @@ class BatchExecSortAggregate(
   override def getOperatorName: String = {
     val aggregateNamePrefix = if (isMerge) "Global" else "Complete"
     aggOperatorName(aggregateNamePrefix + "SortAggregate")
+  }
+
+  override def getParallelism(input: StreamTransformation[BaseRow], conf: TableConfig): Int = {
+    if (isFinal && grouping.length == 0) 1 else input.getParallelism
   }
 
 }

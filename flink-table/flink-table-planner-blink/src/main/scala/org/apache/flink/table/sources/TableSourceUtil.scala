@@ -18,8 +18,6 @@
 
 package org.apache.flink.table.sources
 
-import java.sql.Timestamp
-
 import com.google.common.collect.ImmutableList
 import org.apache.calcite.plan.RelOptCluster
 import org.apache.calcite.rel.RelNode
@@ -29,16 +27,12 @@ import org.apache.calcite.rex.{RexLiteral, RexNode}
 import org.apache.calcite.tools.RelBuilder
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeutils.CompositeType
-import org.apache.flink.table.api.{DataTypes, ValidationException}
+import org.apache.flink.table.`type`.InternalTypes._
+import org.apache.flink.table.`type`.{InternalType, TypeConverters}
+import org.apache.flink.table.api.{Types, ValidationException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.expressions.ApiExpressionUtils.{unresolvedCall, typeLiteral}
-import org.apache.flink.table.expressions.{PlannerResolvedFieldReference, ResolvedFieldReference, RexNodeConverter}
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
-import org.apache.flink.table.types.logical.{LogicalType, TimestampKind, TimestampType, TinyIntType}
-import org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo
-import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
+import org.apache.flink.table.expressions._
+import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
 
 import scala.collection.JavaConversions._
 
@@ -74,10 +68,10 @@ object TableSourceUtil {
 
     // get types of selected fields
     val tableFieldTypes = if (selectedFields.isDefined) {
-      val types = tableSchema.getFieldDataTypes
+      val types = tableSchema.getFieldTypes
       selectedFields.get.map(types(_))
     } else {
-      tableSchema.getFieldDataTypes
+      tableSchema.getFieldTypes
     }
 
     // get rowtime and proctime attributes
@@ -85,41 +79,41 @@ object TableSourceUtil {
     val proctimeAttributes = getProctimeAttribute(tableSource)
 
     // compute mapping of selected fields and time attributes
-    val mapping: Array[Int] = tableFieldTypes.map(_.getLogicalType).zip(tableFieldNames).map {
-      case (_: TimestampType, name: String)
+    val mapping: Array[Int] = tableFieldTypes.zip(tableFieldNames).map {
+      case (Types.SQL_TIMESTAMP, name: String)
         if proctimeAttributes.contains(name) =>
         if (isStreamTable) {
-          TimeIndicatorTypeInfo.PROCTIME_STREAM_MARKER
+          PROCTIME_STREAM_MARKER
         } else {
-          TimeIndicatorTypeInfo.PROCTIME_BATCH_MARKER
+          PROCTIME_BATCH_MARKER
         }
-      case (_: TimestampType, name: String)
+      case (Types.SQL_TIMESTAMP, name: String)
         if rowtimeAttributes.contains(name) =>
         if (isStreamTable) {
-          TimeIndicatorTypeInfo.ROWTIME_STREAM_MARKER
+          ROWTIME_STREAM_MARKER
         } else {
-          TimeIndicatorTypeInfo.ROWTIME_BATCH_MARKER
+          ROWTIME_BATCH_MARKER
         }
-      case (t: LogicalType, name) =>
+      case (t: TypeInformation[_], name) =>
         // check if field is registered as time indicator
         if (proctimeAttributes.contains(name)) {
           throw new ValidationException(s"Processing time field '$name' has invalid type $t. " +
-            s"Processing time attributes must be of TimestampType.")
+            s"Processing time attributes must be of type ${Types.SQL_TIMESTAMP}.")
         }
         if (rowtimeAttributes.contains(name)) {
           throw new ValidationException(s"Rowtime field '$name' has invalid type $t. " +
-            s"Rowtime attributes must be of TimestampType.")
+            s"Rowtime attributes must be of type ${Types.SQL_TIMESTAMP}.")
         }
 
         val (physicalName, idx, tpe) = resolveInputField(name, tableSource)
         // validate that mapped fields are are same type
-        if (fromTypeInfoToLogicalType(tpe) != t) {
+        if (tpe != t) {
           throw new ValidationException(s"Type $t of table field '$name' does not " +
             s"match with type $tpe of the field '$physicalName' of the TableSource return type.")
         }
         idx
     }
-    val inputType = fromDataTypeToLegacyInfo(tableSource.getProducedDataType)
+    val inputType = tableSource.getReturnType
 
     // ensure that only one field is mapped to an atomic type
     if (!inputType.isInstanceOf[CompositeType[_]] && mapping.count(_ >= 0) > 1) {
@@ -146,8 +140,10 @@ object TableSourceUtil {
       typeFactory: FlinkTypeFactory): RelDataType = {
 
     val fieldNames = tableSource.getTableSchema.getFieldNames
-    var fieldTypes = tableSource.getTableSchema.getFieldDataTypes
-      .map(LogicalTypeDataTypeConverter.fromDataTypeToLogicalType)
+    var fieldTypes = tableSource.getTableSchema.getFieldTypes
+      .map(TypeConverters.createInternalTypeFromTypeInfo)
+    // TODO get fieldNullables from TableSchema
+    var fieldNullables = fieldTypes.map(_ => true)
 
     if (streaming) {
       // adjust the type of time attributes for streaming tables
@@ -157,29 +153,27 @@ object TableSourceUtil {
       // patch rowtime fields with time indicator type
       rowtimeAttributes.foreach { rowtimeField =>
         val idx = fieldNames.indexOf(rowtimeField)
-        val rowtimeType = new TimestampType(
-          true, TimestampKind.ROWTIME, 3)
-        fieldTypes = fieldTypes.patch(idx, Seq(rowtimeType), 1)
+        fieldTypes = fieldTypes.patch(idx, Seq(ROWTIME_INDICATOR), 1)
+        fieldNullables = fieldNullables.patch(idx, Seq(false), 1)
       }
       // patch proctime field with time indicator type
       proctimeAttributes.foreach { proctimeField =>
         val idx = fieldNames.indexOf(proctimeField)
-        val proctimeType = new TimestampType(
-          true, TimestampKind.PROCTIME, 3)
-        fieldTypes = fieldTypes.patch(idx, Seq(proctimeType), 1)
+        fieldTypes = fieldTypes.patch(idx, Seq(PROCTIME_INDICATOR), 1)
+        fieldNullables = fieldNullables.patch(idx, Seq(false), 1)
       }
     }
-    val (selectedFieldNames, selectedFieldTypes) =
+    val (selectedFieldNames, selectedFieldTypes, selectedFieldNullables) =
       if (selectedFields.isDefined) {
         // filter field names and types by selected fields
         (
           selectedFields.get.map(fieldNames(_)),
-          selectedFields.get.map(fieldTypes(_))
-        )
+          selectedFields.get.map(fieldTypes(_)),
+          selectedFields.get.map(fieldNullables(_)))
       } else {
-        (fieldNames, fieldTypes)
+        (fieldNames, fieldTypes,  fieldNullables)
       }
-    typeFactory.buildRelNodeRowType(selectedFieldNames, selectedFieldTypes)
+    typeFactory.buildRelDataType(selectedFieldNames, selectedFieldTypes, selectedFieldNullables)
   }
 
   /**
@@ -232,13 +226,15 @@ object TableSourceUtil {
     *                       If None, all fields are selected.
     * @param cluster The [[RelOptCluster]] of the current optimization process.
     * @param relBuilder The [[RelBuilder]] to build the [[RexNode]].
+    * @param resultType The result type of the timestamp expression.
     * @return The [[RexNode]] expression to extract the timestamp of the table source.
     */
   def getRowtimeExtractionExpression(
       tableSource: TableSource[_],
       selectedFields: Option[Array[Int]],
       cluster: RelOptCluster,
-      relBuilder: RelBuilder): Option[RexNode] = {
+      relBuilder: RelBuilder,
+      resultType: TypeInformation[_]): Option[RexNode] = {
 
     val typeFactory = cluster.getTypeFactory.asInstanceOf[FlinkTypeFactory]
 
@@ -248,12 +244,11 @@ object TableSourceUtil {
       */
     def createSchemaRelNode(fields: Array[(String, Int, TypeInformation[_])]): RelNode = {
       val maxIdx = fields.map(_._2).max
-      val idxMap: Map[Int, (String, LogicalType)] = Map(
-        fields.map(f => f._2 ->(f._1,
-            fromTypeInfoToLogicalType(f._3))): _*)
+      val idxMap: Map[Int, (String, InternalType)] = Map(
+        fields.map(f => f._2 ->(f._1, TypeConverters.createInternalTypeFromTypeInfo(f._3))): _*)
       val (physicalFields, physicalTypes) = (0 to maxIdx)
-        .map(i => idxMap.getOrElse(i, ("", new TinyIntType()))).unzip
-      val physicalSchema: RelDataType = typeFactory.buildRelNodeRowType(
+        .map(i => idxMap.getOrElse(i, ("", BYTE))).unzip
+      val physicalSchema: RelDataType = typeFactory.buildRelDataType(
         physicalFields,
         physicalTypes)
       LogicalValues.create(
@@ -279,10 +274,9 @@ object TableSourceUtil {
 
       val expression = tsExtractor.getExpression(fieldAccesses)
       // add cast to requested type and convert expression to RexNode
-      val castExpression = unresolvedCall(
+      val castExpression = new CallExpression(
         BuiltInFunctionDefinitions.CAST,
-        expression,
-        typeLiteral(DataTypes.TIMESTAMP(3).bridgedTo(classOf[Timestamp])))
+        List(expression, new TypeLiteralExpression(fromLegacyInfoToDataType(resultType))))
       val rexExpression = castExpression.accept(new RexNodeConverter(relBuilder))
       relBuilder.clear()
       rexExpression
@@ -321,7 +315,7 @@ object TableSourceUtil {
       fieldName: String,
       tableSource: TableSource[_]): (String, Int, TypeInformation[_]) = {
 
-    val returnType = fromDataTypeToLegacyInfo(tableSource.getProducedDataType)
+    val returnType = tableSource.getReturnType
 
     /** Look up a field by name in a type information */
     def lookupField(fieldName: String, failMsg: String): (String, Int, TypeInformation[_]) = {

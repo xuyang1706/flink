@@ -23,7 +23,6 @@ import org.apache.flink.annotation.docs.ConfigGroup;
 import org.apache.flink.annotation.docs.ConfigGroups;
 import org.apache.flink.annotation.docs.Documentation;
 import org.apache.flink.configuration.description.Description;
-import org.apache.flink.util.ArrayUtils;
 
 import static org.apache.flink.configuration.ConfigOptions.key;
 
@@ -117,7 +116,12 @@ public class CoreOptions {
 		if (append.isEmpty()) {
 			return basePatterns;
 		} else {
-			return ArrayUtils.concat(basePatterns, append.split(";"));
+			String[] appendPatterns = append.split(";");
+
+			String[] joinedPatterns = new String[basePatterns.length + appendPatterns.length];
+			System.arraycopy(basePatterns, 0, joinedPatterns, 0, basePatterns.length);
+			System.arraycopy(appendPatterns, 0, joinedPatterns, basePatterns.length, appendPatterns.length);
+			return joinedPatterns;
 		}
 	}
 

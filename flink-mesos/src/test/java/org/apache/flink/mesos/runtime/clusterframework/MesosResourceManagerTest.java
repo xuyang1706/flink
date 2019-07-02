@@ -42,8 +42,10 @@ import org.apache.flink.runtime.clusterframework.ContainerSpecification;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.runtime.instance.HardwareDescription;
@@ -317,6 +319,7 @@ public class MesosResourceManagerTest extends TestLogger {
 		 */
 		class MockResourceManagerRuntimeServices {
 
+			public final ScheduledExecutor scheduledExecutor;
 			public final TestingHighAvailabilityServices highAvailabilityServices;
 			public final HeartbeatServices heartbeatServices;
 			public final MetricRegistry metricRegistry;
@@ -329,10 +332,11 @@ public class MesosResourceManagerTest extends TestLogger {
 			public UUID rmLeaderSessionId;
 
 			MockResourceManagerRuntimeServices() throws Exception {
+				scheduledExecutor = mock(ScheduledExecutor.class);
 				highAvailabilityServices = new TestingHighAvailabilityServices();
 				rmLeaderElectionService = new TestingLeaderElectionService();
 				highAvailabilityServices.setResourceManagerLeaderElectionService(rmLeaderElectionService);
-				heartbeatServices = new HeartbeatServices(5L, 5L);
+				heartbeatServices = new TestingHeartbeatServices(5L, 5L, scheduledExecutor);
 				metricRegistry = mock(MetricRegistryImpl.class);
 				slotManager = mock(SlotManager.class);
 				slotManagerStarted = new CompletableFuture<>();

@@ -77,7 +77,7 @@ public class TestInputChannel extends InputChannel {
 		return read(buffer, moreAvailable);
 	}
 
-	TestInputChannel readEndOfPartitionEvent() {
+	TestInputChannel readEndOfPartitionEvent() throws InterruptedException {
 		addBufferAndAvailability(
 			() -> {
 				setReleased();

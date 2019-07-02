@@ -18,8 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.runtime.io.AsyncDataInput;
-import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
+import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 
 import org.junit.runner.RunWith;
@@ -55,12 +54,12 @@ public abstract class InputGateTestBase {
 			TestInputChannel inputChannelWithNewData) throws Exception {
 
 		assertFalse(inputGateToTest.isAvailable().isDone());
-		assertFalse(inputGateToTest.pollNext().isPresent());
+		assertFalse(inputGateToTest.pollNextBufferOrEvent().isPresent());
 
 		CompletableFuture<?> isAvailable = inputGateToTest.isAvailable();
 
 		assertFalse(inputGateToTest.isAvailable().isDone());
-		assertFalse(inputGateToTest.pollNext().isPresent());
+		assertFalse(inputGateToTest.pollNextBufferOrEvent().isPresent());
 
 		assertEquals(isAvailable, inputGateToTest.isAvailable());
 
@@ -69,24 +68,6 @@ public abstract class InputGateTestBase {
 
 		assertTrue(isAvailable.isDone());
 		assertTrue(inputGateToTest.isAvailable().isDone());
-		assertEquals(AsyncDataInput.AVAILABLE, inputGateToTest.isAvailable());
-	}
-
-	protected void testIsAvailableAfterFinished(
-		InputGate inputGateToTest,
-		Runnable endOfPartitionEvent) throws Exception {
-
-		CompletableFuture<?> available = inputGateToTest.isAvailable();
-		assertFalse(available.isDone());
-		assertFalse(inputGateToTest.pollNext().isPresent());
-
-		endOfPartitionEvent.run();
-
-		assertTrue(inputGateToTest.pollNext().isPresent()); // EndOfPartitionEvent
-
-		assertTrue(available.isDone());
-		assertTrue(inputGateToTest.isAvailable().isDone());
-		assertEquals(AsyncDataInput.AVAILABLE, inputGateToTest.isAvailable());
 	}
 
 	protected SingleInputGate createInputGate() {
@@ -98,7 +79,7 @@ public abstract class InputGateTestBase {
 	}
 
 	protected SingleInputGate createInputGate(
-		NettyShuffleEnvironment environment, int numberOfInputChannels, ResultPartitionType partitionType) {
+		NetworkEnvironment environment, int numberOfInputChannels, ResultPartitionType partitionType) {
 
 		SingleInputGateBuilder builder = new SingleInputGateBuilder()
 			.setNumberOfChannels(numberOfInputChannels)

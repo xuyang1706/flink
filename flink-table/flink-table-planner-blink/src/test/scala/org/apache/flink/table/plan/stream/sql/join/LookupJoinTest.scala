@@ -19,24 +19,24 @@
 package org.apache.flink.table.plan.stream.sql.join
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.scala._
+import org.apache.flink.streaming.api.datastream.DataStream
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.async.ResultFuture
 import org.apache.flink.table.api._
 import org.apache.flink.table.dataformat.{BaseRow, BinaryString}
 import org.apache.flink.table.functions.{AsyncTableFunction, TableFunction}
 import org.apache.flink.table.sources._
-import org.apache.flink.table.types.logical.{IntType, TimestampType, VarCharType}
+import org.apache.flink.api.scala._
+import org.apache.flink.table.`type`.{InternalType, InternalTypes}
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
 import org.apache.flink.table.util.{StreamTableTestUtil, TableTestBase}
 import org.apache.flink.types.Row
-
 import org.junit.Assert.{assertTrue, fail}
 import org.junit.Test
 
+import _root_.java.util
 import _root_.java.lang.{Long => JLong}
 import _root_.java.sql.Timestamp
-import _root_.java.util.concurrent.CompletableFuture
-import _root_.java.util.{Collection => JCollection}
 
 import _root_.scala.annotation.varargs
 
@@ -70,6 +70,15 @@ class LookupJoinTest extends TableTestBase with Serializable {
       classOf[TableException]
     )
 
+    // can't on non-key fields
+    expectExceptionThrown(
+      "SELECT * FROM MyTable AS T JOIN temporalTest " +
+        "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.a = D.age",
+      "Temporal table join requires an equality condition on ALL fields of table " +
+        "[TestTemporalTable(id, name, age)]'s PRIMARY KEY or (UNIQUE) INDEX(s).",
+      classOf[TableException]
+    )
+
     // only support left or inner join
     expectExceptionThrown(
       "SELECT * FROM MyTable AS T RIGHT JOIN temporalTest " +
@@ -82,8 +91,8 @@ class LookupJoinTest extends TableTestBase with Serializable {
     expectExceptionThrown(
       "SELECT * FROM MyTable AS T LEFT JOIN temporalTest " +
         "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.a + 1 = D.id + 2",
-      "Temporal table join requires an equality condition on fields of table " +
-        "[TestTemporalTable(id, name, age)].",
+      "Temporal table join requires an equality condition on ALL fields of table " +
+        "[TestTemporalTable(id, name, age)]'s PRIMARY KEY or (UNIQUE) INDEX(s).",
       classOf[TableException]
     )
 
@@ -151,7 +160,7 @@ class LookupJoinTest extends TableTestBase with Serializable {
     expectExceptionThrown(
       "SELECT * FROM T AS T JOIN temporalTable7 " +
         "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.a = D.id AND T.b = D.name AND T.ts = D.ts",
-      "Expected: eval(java.util.concurrent.CompletableFuture, " +
+      "Expected: eval(org.apache.flink.streaming.api.functions.async.ResultFuture, " +
         "java.lang.Integer, org.apache.flink.table.dataformat.BinaryString, java.lang.Long) \n" +
         "Actual: eval(java.lang.Integer, org.apache.flink.table.dataformat.BinaryString, " +
         "java.sql.Timestamp)",
@@ -163,9 +172,9 @@ class LookupJoinTest extends TableTestBase with Serializable {
     expectExceptionThrown(
       "SELECT * FROM T AS T JOIN temporalTable8 " +
         "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.a = D.id AND T.b = D.name AND T.ts = D.ts",
-        "Expected: eval(java.util.concurrent.CompletableFuture, " +
+        "Expected: eval(org.apache.flink.streaming.api.functions.async.ResultFuture, " +
         "java.lang.Integer, org.apache.flink.table.dataformat.BinaryString, java.lang.Long) \n" +
-        "Actual: eval(java.util.concurrent.CompletableFuture, " +
+        "Actual: eval(org.apache.flink.streaming.api.functions.async.ResultFuture, " +
         "java.lang.Integer, java.lang.String, java.sql.Timestamp)",
       classOf[TableException]
     )
@@ -175,25 +184,13 @@ class LookupJoinTest extends TableTestBase with Serializable {
     verifyTranslationSuccess("SELECT * FROM T AS T JOIN temporalTable9 " +
       "FOR SYSTEM_TIME AS OF T.proctime AS D " +
       "ON T.a = D.id AND T.b = D.name AND T.ts = D.ts")
-
-    val temporalTable10 = new TestInvalidTemporalTable(new InvalidAsyncTableFunctionEvalSignature3)
-    streamUtil.tableEnv.registerTableSource("temporalTable10", temporalTable10)
-    expectExceptionThrown(
-      "SELECT * FROM T AS T JOIN temporalTable10 " +
-        "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.a = D.id AND T.b = D.name AND T.ts = D.ts",
-      "Expected: eval(java.util.concurrent.CompletableFuture, " +
-        "java.lang.Integer, org.apache.flink.table.dataformat.BinaryString, java.lang.Long) \n" +
-        "Actual: eval(org.apache.flink.streaming.api.functions.async.ResultFuture, " +
-        "java.lang.Integer, org.apache.flink.table.dataformat.BinaryString, java.lang.Long)",
-      classOf[TableException]
-    )
   }
 
   @Test
   def testJoinOnDifferentKeyTypes(): Unit = {
     // Will do implicit type coercion.
     thrown.expect(classOf[TableException])
-    thrown.expectMessage("VARCHAR(2147483647) and INTEGER does not have common type now")
+    thrown.expectMessage("VARCHAR(65536) and INTEGER does not have common type now")
     streamUtil.verifyPlan("SELECT * FROM MyTable AS T JOIN temporalTest "
       + "FOR SYSTEM_TIME AS OF T.proctime AS D ON T.b = D.id")
   }
@@ -204,8 +201,8 @@ class LookupJoinTest extends TableTestBase with Serializable {
     expectExceptionThrown(
       "SELECT * FROM MyTable AS T JOIN nonTemporal " +
         "FOR SYSTEM_TIME AS OF T.rowtime AS D ON T.a = D.id",
-      "Temporal table join only support join on a LookupableTableSource",
-      classOf[TableException])
+      "Table 'nonTemporal' is not a temporal table",
+      classOf[ValidationException])
   }
 
   @Test
@@ -325,12 +322,12 @@ class LookupJoinTest extends TableTestBase with Serializable {
       fail(s"Expected a $clazz, but no exception is thrown.")
     } catch {
       case e if e.getClass == clazz =>
-              if (keywords != null) {
-                assertTrue(
-                  s"The actual exception message \n${e.getMessage}\n" +
-                    s"doesn't contain expected keyword \n$keywords\n",
-                  e.getMessage.contains(keywords))
-              }
+        if (keywords != null) {
+          assertTrue(
+            s"The actual exception message \n${e.getMessage}\n" +
+              s"doesn't contain expected keyword \n$keywords\n",
+            e.getMessage.contains(keywords))
+        }
       case e: Throwable =>
         e.printStackTrace()
         fail(s"Expected throw ${clazz.getSimpleName}, but is $e.")
@@ -344,7 +341,10 @@ class LookupJoinTest extends TableTestBase with Serializable {
 
 
 class TestTemporalTable
-  extends LookupableTableSource[BaseRow] {
+  extends StreamTableSource[BaseRow]
+  with BatchTableSource[BaseRow]
+  with LookupableTableSource[BaseRow]
+  with DefinedIndexes {
 
   val fieldNames: Array[String] = Array("id", "name", "age")
   val fieldTypes: Array[TypeInformation[_]] = Array(Types.INT, Types.STRING, Types.INT)
@@ -359,22 +359,47 @@ class TestTemporalTable
       "this method should never be called.")
   }
 
-  override def isAsyncEnabled: Boolean = false
+  override def getLookupConfig: LookupConfig = LookupConfig.DEFAULT
 
   override def getReturnType: TypeInformation[BaseRow] = {
     new BaseRowTypeInfo(
-      Array(new IntType(), new VarCharType(VarCharType.MAX_LENGTH), new IntType()),
+      Array(InternalTypes.INT, InternalTypes.STRING, InternalTypes.INT)
+        .asInstanceOf[Array[InternalType]],
       fieldNames)
   }
 
   override def getTableSchema: TableSchema = new TableSchema(fieldNames, fieldTypes)
+
+  override def getIndexes: util.Collection[TableIndex] = {
+    val index1 = TableIndex.builder()
+      .normalIndex()
+      .indexedColumns("name")
+      .build()
+    val index2 = TableIndex.builder()
+      .uniqueIndex()
+      .indexedColumns("id")
+      .build()
+    util.Arrays.asList(index1, index2)
+  }
+
+  override def getDataStream(execEnv: StreamExecutionEnvironment): DataStream[BaseRow] = {
+    throw new UnsupportedOperationException("This TableSource is only used for unit test, " +
+      "this method should never be called.")
+  }
+
+  override def getBoundedStream(streamEnv: StreamExecutionEnvironment): DataStream[BaseRow] = {
+    throw new UnsupportedOperationException("This TableSource is only used for unit test, " +
+      "this method should never be called.")
+  }
 }
 
 class TestInvalidTemporalTable private(
     async: Boolean,
     fetcher: TableFunction[_],
     asyncFetcher: AsyncTableFunction[_])
-  extends LookupableTableSource[BaseRow] {
+  extends StreamTableSource[BaseRow]
+  with LookupableTableSource[BaseRow]
+  with DefinedIndexes {
 
   val fieldNames: Array[String] = Array("id", "name", "age", "ts")
   val fieldTypes: Array[TypeInformation[_]] = Array(
@@ -390,8 +415,8 @@ class TestInvalidTemporalTable private(
 
   override def getReturnType: TypeInformation[BaseRow] = {
     new BaseRowTypeInfo(
-      Array(new IntType(), new VarCharType(VarCharType.MAX_LENGTH),
-        new IntType(), new TimestampType(3)),
+      Array(InternalTypes.INT, InternalTypes.STRING, InternalTypes.INT, InternalTypes.TIMESTAMP)
+        .asInstanceOf[Array[InternalType]],
       fieldNames)
   }
 
@@ -405,7 +430,24 @@ class TestInvalidTemporalTable private(
     asyncFetcher.asInstanceOf[AsyncTableFunction[BaseRow]]
   }
 
-  override def isAsyncEnabled: Boolean = async
+  override def getLookupConfig: LookupConfig = {
+    LookupConfig.builder()
+        .setAsyncEnabled(async)
+        .build()
+  }
+
+  override def getIndexes: util.Collection[TableIndex] = {
+    util.Collections.singleton(TableIndex.builder()
+      .uniqueIndex()
+      .indexedColumns("id", "name", "ts")
+      .build())
+  }
+
+  override def getDataStream(execEnv: StreamExecutionEnvironment): DataStream[BaseRow] = {
+    throw new UnsupportedOperationException("This TableSource is only used for unit test, " +
+      "this method should never be called.")
+  }
+
 }
 
 class InvalidTableFunctionResultType extends TableFunction[String] {
@@ -442,25 +484,17 @@ class InvalidAsyncTableFunctionEvalSignature1 extends AsyncTableFunction[BaseRow
 }
 
 class InvalidAsyncTableFunctionEvalSignature2 extends AsyncTableFunction[BaseRow] {
-  def eval(resultFuture: CompletableFuture[JCollection[BaseRow]],
-    a: Integer, b: String,  c: Timestamp): Unit = {
-  }
-}
-
-class InvalidAsyncTableFunctionEvalSignature3 extends AsyncTableFunction[BaseRow] {
-  def eval(resultFuture: ResultFuture[BaseRow],
-    a: Integer, b: BinaryString,  c: JLong): Unit = {
+  def eval(resultFuture: ResultFuture[BaseRow], a: Integer, b: String,  c: Timestamp): Unit = {
   }
 }
 
 class ValidAsyncTableFunction extends AsyncTableFunction[BaseRow] {
   @varargs
-  def eval(resultFuture: CompletableFuture[JCollection[BaseRow]], objs: AnyRef*): Unit = {
+  def eval(resultFuture: ResultFuture[BaseRow], objs: AnyRef*): Unit = {
   }
 }
 
 class ValidAsyncTableFunction2 extends AsyncTableFunction[BaseRow] {
-  def eval(resultFuture: CompletableFuture[JCollection[BaseRow]],
-    a: Integer, b: BinaryString, c: JLong): Unit = {
+  def eval(resultFuture: ResultFuture[BaseRow], a: Integer, b: BinaryString, c: JLong): Unit = {
   }
 }

@@ -117,6 +117,7 @@ public class LocalInputChannelTest {
 				.setNumberOfSubpartitions(parallelism)
 				.setNumTargetKeyGroups(parallelism)
 				.setResultPartitionManager(partitionManager)
+				.setSendScheduleOrUpdateConsumersMessage(true)
 				.setBufferPoolFactory(p ->
 					networkBuffers.createBufferPool(producerBufferPoolSize, producerBufferPoolSize))
 				.build();
@@ -130,7 +131,7 @@ public class LocalInputChannelTest {
 				false,
 				new TestPartitionProducerBufferSource(
 					parallelism,
-					partition.getBufferPool(),
+					partition.getBufferProvider(),
 					numberOfBuffersPerChannel)
 			);
 		}
@@ -527,7 +528,7 @@ public class LocalInputChannelTest {
 
 			try {
 				Optional<BufferOrEvent> boe;
-				while ((boe = inputGate.getNext()).isPresent()) {
+				while ((boe = inputGate.getNextBufferOrEvent()).isPresent()) {
 					if (boe.get().isBuffer()) {
 						boe.get().getBuffer().recycleBuffer();
 

@@ -27,23 +27,21 @@ import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment
 import org.apache.flink.streaming.api.functions.source.SourceFunction
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.table.api.internal.{TableEnvImpl, TableEnvironmentImpl, TableImpl, BatchTableEnvImpl => _}
-import org.apache.flink.table.api.java.internal.{BatchTableEnvironmentImpl => JavaBatchTableEnvironmentImpl, StreamTableEnvironmentImpl => JavaStreamTableEnvironmentImpl}
+import org.apache.flink.table.api.java.{BatchTableEnvImpl => JavaBatchTableEnvImpl, StreamTableEnvImpl => JavaStreamTableEnvImpl}
+import org.apache.flink.table.api.scala.{BatchTableEnvironment => ScalaBatchTableEnv, StreamTableEnvironment => ScalaStreamTableEnv}
+import org.apache.flink.table.api.scala.{BatchTableEnvImpl => ScalaBatchTableEnvImpl, StreamTableEnvImpl => ScalaStreamTableEnvImpl}
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.scala.internal.{BatchTableEnvironmentImpl => ScalaBatchTableEnvironmentImpl, StreamTableEnvironmentImpl => ScalaStreamTableEnvironmentImpl}
-import org.apache.flink.table.api.{Table, TableConfig, TableSchema}
-import org.apache.flink.table.catalog.{CatalogManager, GenericInMemoryCatalog}
+import org.apache.flink.table.api.{Table, TableConfig, TableImpl, TableSchema}
+import org.apache.flink.table.catalog.{CatalogManager, GenericCatalogDatabase, GenericInMemoryCatalog}
 import org.apache.flink.table.expressions.Expression
 import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
-import org.apache.flink.table.operations.{DataSetQueryOperation, JavaDataStreamQueryOperation, ScalaDataStreamQueryOperation}
-import org.apache.flink.table.planner.StreamPlanner
-import org.apache.flink.table.utils.TableTestUtil.createCatalogManager
+import org.apache.flink.table.utils.TableTestUtil.{createCatalogManager, extractBuiltinPath}
 import org.junit.Assert.assertEquals
-import org.junit.rules.ExpectedException
 import org.junit.{ComparisonFailure, Rule}
+import org.junit.rules.ExpectedException
 import org.mockito.Mockito.{mock, when}
 
-import _root_.scala.util.control.Breaks._
+import util.control.Breaks._
 
 /**
   * Test base for testing Table API / SQL plans.
@@ -68,9 +66,9 @@ class TableTestBase {
     assertEquals(
       "Logical plans do not match",
       LogicalPlanFormatUtils.formatTempTableId(RelOptUtil.toString(
-        TableTestUtil.toRelNode(expected))),
+        expected.asInstanceOf[TableImpl].getRelNode)),
       LogicalPlanFormatUtils.formatTempTableId(RelOptUtil.toString(
-        TableTestUtil.toRelNode(actual))))
+        actual.asInstanceOf[TableImpl].getRelNode)))
   }
 }
 
@@ -94,7 +92,7 @@ abstract class TableTestUtil(verifyCatalogPath: Boolean = false) {
   def verifyTable(resultTable: Table, expected: String): Unit
 
   def verifySchema(resultTable: Table, fields: Seq[(String, TypeInformation[_])]): Unit = {
-    val actual = resultTable.getSchema
+    val actual = resultTable.asInstanceOf[TableImpl].getSchema
     val expected = new TableSchema(fields.map(_._1).toArray, fields.map(_._2).toArray)
     assertEquals(expected, actual)
   }
@@ -110,8 +108,16 @@ abstract class TableTestUtil(verifyCatalogPath: Boolean = false) {
     // depends on the native machine (Little/Big Endian)
     val actualNoCharset = actual.replace("_UTF-16LE'", "'").replace("_UTF-16BE'", "'")
 
+    // majority of tests did not assume existence of Catalog API.
+    // this enables disabling catalog path verification
+    val actualWithAdjustedPath = if (!verifyCatalogPath) {
+      actualNoCharset.replaceAll("default_catalog, default_database, ", "")
+    } else {
+      actualNoCharset
+    }
+
     val expectedLines = expected.split("\n").map(_.trim)
-    val actualLines = actualNoCharset.split("\n").map(_.trim)
+    val actualLines = actualWithAdjustedPath.split("\n").map(_.trim)
 
     val expectedMessage = expectedLines.mkString("\n")
     val actualMessage = actualLines.mkString("\n")
@@ -156,17 +162,6 @@ object TableTestUtil {
     config.setBuiltInCatalogName(catalogManager.getCurrentCatalog)
     config.setBuiltInDatabaseName(catalogManager.getCurrentDatabase)
     config
-  }
-
-  private[utils] def toRelNode(expected: Table) = {
-    expected.asInstanceOf[TableImpl].getTableEnvironment match {
-      case t: TableEnvImpl => t.getRelBuilder.tableOperation(expected.getQueryOperation).build()
-      case t: TableEnvironmentImpl =>
-        t.getPlanner.asInstanceOf[StreamPlanner].getRelBuilder
-          .tableOperation(expected.getQueryOperation).build()
-      case _ =>
-        throw new AssertionError()
-    }
   }
 
   // this methods are currently just for simplifying string construction,
@@ -215,22 +210,12 @@ object TableTestUtil {
     term("tuples", "[" + listValues.mkString(", ") + "]")
   }
 
-  def batchTableNode(table: Table): String = {
-    val dataSetTable = table.getQueryOperation.asInstanceOf[DataSetQueryOperation[_]]
-    s"DataSetScan(ref=[${System.identityHashCode(dataSetTable.getDataSet)}], " +
-      s"fields=[${dataSetTable.getTableSchema.getFieldNames.mkString(", ")}])"
+  def batchTableNode(idx: Int): String = {
+    s"DataSetScan(table=[[_DataSetTable_$idx]])"
   }
 
-  def streamTableNode(table: Table): String = {
-    val (id, fieldNames) = table.getQueryOperation match {
-      case q: JavaDataStreamQueryOperation[_] =>
-        (q.getDataStream.getId, q.getTableSchema.getFieldNames)
-      case q: ScalaDataStreamQueryOperation[_] =>
-        (q.getDataStream.getId, q.getTableSchema.getFieldNames)
-      case n => throw new AssertionError(s"Unexpected table node $n")
-    }
-
-    s"DataStreamScan(id=[$id], fields=[${fieldNames.mkString(", ")}])"
+  def streamTableNode(idx: Int): String = {
+    s"DataStreamScan(table=[[_DataStreamTable_$idx]])"
   }
 }
 
@@ -246,12 +231,12 @@ case class BatchTableTestUtil(
       new TableConfig
   }
 
-  val javaTableEnv = new JavaBatchTableEnvironmentImpl(
+  val javaTableEnv = new JavaBatchTableEnvImpl(
     javaEnv,
     tableConfig,
     catalogManager.getOrElse(createCatalogManager(new TableConfig)))
   val env = new ExecutionEnvironment(javaEnv)
-  val tableEnv = new ScalaBatchTableEnvironmentImpl(
+  val tableEnv = new ScalaBatchTableEnvImpl(
     env,
     tableConfig,
     catalogManager.getOrElse(createCatalogManager(new TableConfig)))
@@ -304,8 +289,8 @@ case class BatchTableTestUtil(
   }
 
   def verifyTable(resultTable: Table, expected: String): Unit = {
-    val relNode = TableTestUtil.toRelNode(resultTable)
-    val optimized = tableEnv.optimizer.optimize(relNode)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = tableEnv.optimize(relNode)
     verifyString(expected, optimized)
   }
 
@@ -314,14 +299,14 @@ case class BatchTableTestUtil(
   }
 
   def verifyJavaTable(resultTable: Table, expected: String): Unit = {
-    val relNode = TableTestUtil.toRelNode(resultTable)
-    val optimized = javaTableEnv.optimizer.optimize(relNode)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = javaTableEnv.optimize(relNode)
     verifyString(expected, optimized)
   }
 
   def printTable(resultTable: Table): Unit = {
-    val relNode = TableTestUtil.toRelNode(resultTable)
-    val optimized = tableEnv.optimizer.optimize(relNode)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = tableEnv.optimize(relNode)
     println(RelOptUtil.toString(optimized))
   }
 
@@ -331,10 +316,6 @@ case class BatchTableTestUtil(
 
   def explain(resultTable: Table): String = {
     tableEnv.explain(resultTable)
-  }
-
-  def toRelNode(table: Table): RelNode = {
-    tableEnv.getRelBuilder.tableOperation(table.getQueryOperation).build()
   }
 }
 
@@ -351,15 +332,15 @@ case class StreamTableTestUtil(
       new TableConfig
   }
 
-  val javaTableEnv = JavaStreamTableEnvironmentImpl.create(
-    catalogManager.getOrElse(createCatalogManager(new TableConfig)),
+  val javaTableEnv = new JavaStreamTableEnvImpl(
+    javaEnv,
     tableConfig,
-    javaEnv)
+    catalogManager.getOrElse(createCatalogManager(new TableConfig)))
   val env = new StreamExecutionEnvironment(javaEnv)
-  val tableEnv = ScalaStreamTableEnvironmentImpl.create(
-    catalogManager.getOrElse(createCatalogManager(new TableConfig)),
+  val tableEnv = new StreamTableEnvImpl(
+    env,
     tableConfig,
-    env)
+    catalogManager.getOrElse(createCatalogManager(new TableConfig)))
 
   def addTable[T: TypeInformation](
       name: String,
@@ -406,13 +387,16 @@ case class StreamTableTestUtil(
   }
 
   def verifyTable(resultTable: Table, expected: String): Unit = {
-    val optimized = optimize(resultTable)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = tableEnv.optimize(relNode, updatesAsRetraction = false)
     verifyString(expected, optimized)
   }
 
   def verify2Tables(resultTable1: Table, resultTable2: Table): Unit = {
-    val optimized1 = optimize(resultTable1)
-    val optimized2 = optimize(resultTable2)
+    val relNode1 = resultTable1.asInstanceOf[TableImpl].getRelNode
+    val optimized1 = tableEnv.optimize(relNode1, updatesAsRetraction = false)
+    val relNode2 = resultTable2.asInstanceOf[TableImpl].getRelNode
+    val optimized2 = tableEnv.optimize(relNode2, updatesAsRetraction = false)
     assertEquals(RelOptUtil.toString(optimized1), RelOptUtil.toString(optimized2))
   }
 
@@ -421,13 +405,15 @@ case class StreamTableTestUtil(
   }
 
   def verifyJavaTable(resultTable: Table, expected: String): Unit = {
-    val optimized = optimize(resultTable)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = javaTableEnv.optimize(relNode, updatesAsRetraction = false)
     verifyString(expected, optimized)
   }
 
   // the print methods are for debugging purposes only
   def printTable(resultTable: Table): Unit = {
-    val optimized = optimize(resultTable)
+    val relNode = resultTable.asInstanceOf[TableImpl].getRelNode
+    val optimized = tableEnv.optimize(relNode, updatesAsRetraction = false)
     println(RelOptUtil.toString(optimized))
   }
 
@@ -437,21 +423,6 @@ case class StreamTableTestUtil(
 
   def explain(resultTable: Table): String = {
     tableEnv.explain(resultTable)
-  }
-
-  def toRelNode(table: Table): RelNode = {
-    tableEnv.getPlanner.asInstanceOf[StreamPlanner]
-        .getRelBuilder.tableOperation(table.getQueryOperation).build()
-  }
-
-  protected def optimize(resultTable1: Table): RelNode = {
-    val planner = resultTable1.asInstanceOf[TableImpl]
-      .getTableEnvironment.asInstanceOf[TableEnvironmentImpl]
-      .getPlanner.asInstanceOf[StreamPlanner]
-    val relNode = planner.getRelBuilder.tableOperation(resultTable1.getQueryOperation).build()
-    val optimized = planner.optimizer
-      .optimize(relNode, updatesAsRetraction = false, planner.getRelBuilder)
-    optimized
   }
 }
 

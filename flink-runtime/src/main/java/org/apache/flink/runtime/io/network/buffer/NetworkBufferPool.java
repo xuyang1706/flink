@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
+import org.apache.flink.configuration.NetworkEnvironmentOptions;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.core.memory.MemorySegmentProvider;
@@ -121,11 +121,6 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 				allocatedMb, availableMemorySegments.size(), segmentSize);
 	}
 
-	@Override
-	public int getBufferSize() {
-		return memorySegmentSize;
-	}
-
 	@Nullable
 	public MemorySegment requestMemorySegment() {
 		return availableMemorySegments.poll();
@@ -154,9 +149,9 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 						totalNumberOfMemorySegments - numTotalRequiredBuffers,
 						totalNumberOfMemorySegments,
 						memorySegmentSize,
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
 			}
 
 			this.numTotalRequiredBuffers += numberOfSegmentsToRequest;
@@ -289,9 +284,9 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 						totalNumberOfMemorySegments - numTotalRequiredBuffers,
 						totalNumberOfMemorySegments,
 						memorySegmentSize,
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
-						NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
+						NetworkEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
 			}
 
 			this.numTotalRequiredBuffers += numRequiredBuffers;

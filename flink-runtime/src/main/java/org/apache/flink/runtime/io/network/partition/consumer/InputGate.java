@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.event.TaskEvent;
-import org.apache.flink.runtime.io.AsyncDataInput;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -69,11 +68,15 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * will have an input gate attached to it. This will provide its input, which will consist of one
  * subpartition from each partition of the intermediate result.
  */
-public abstract class InputGate implements AsyncDataInput<BufferOrEvent>, AutoCloseable {
+public abstract class InputGate implements AutoCloseable {
+
+	public static final CompletableFuture<?> AVAILABLE = CompletableFuture.completedFuture(null);
 
 	protected CompletableFuture<?> isAvailable = new CompletableFuture<>();
 
 	public abstract int getNumberOfInputChannels();
+
+	public abstract String getOwningTaskName();
 
 	public abstract boolean isFinished();
 
@@ -84,25 +87,23 @@ public abstract class InputGate implements AsyncDataInput<BufferOrEvent>, AutoCl
 	 *
 	 * @return {@code Optional.empty()} if {@link #isFinished()} returns true.
 	 */
-	public abstract Optional<BufferOrEvent> getNext() throws IOException, InterruptedException;
+	public abstract Optional<BufferOrEvent> getNextBufferOrEvent() throws IOException, InterruptedException;
 
 	/**
 	 * Poll the {@link BufferOrEvent}.
 	 *
 	 * @return {@code Optional.empty()} if there is no data to return or if {@link #isFinished()} returns true.
 	 */
-	public abstract Optional<BufferOrEvent> pollNext() throws IOException, InterruptedException;
+	public abstract Optional<BufferOrEvent> pollNextBufferOrEvent() throws IOException, InterruptedException;
 
 	public abstract void sendTaskEvent(TaskEvent event) throws IOException;
 
 	public abstract int getPageSize();
 
 	/**
-	 * @return a future that is completed if there are more records available. If there are more
-	 * records available immediately, {@link #AVAILABLE} should be returned. Previously returned
-	 * not completed futures should become completed once there are more records available.
+	 * @return a future that is completed if there are more records available. If there more records
+	 * available immediately, {@link #AVAILABLE} should be returned.
 	 */
-	@Override
 	public CompletableFuture<?> isAvailable() {
 		return isAvailable;
 	}

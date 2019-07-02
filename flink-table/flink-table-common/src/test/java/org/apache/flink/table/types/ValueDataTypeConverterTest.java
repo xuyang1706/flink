@@ -19,10 +19,8 @@
 package org.apache.flink.table.types;
 
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.expressions.TimePointUnit;
 import org.apache.flink.table.types.logical.BinaryType;
 import org.apache.flink.table.types.logical.CharType;
-import org.apache.flink.table.types.logical.SymbolType;
 import org.apache.flink.table.types.utils.ValueDataTypeConverter;
 
 import org.junit.Test;
@@ -140,14 +138,9 @@ public class ValueDataTypeConverterTest {
 				},
 
 				{
-					TimePointUnit.HOUR,
-					new AtomicDataType(new SymbolType<>(TimePointUnit.class))
-				},
-
-				{
 					new BigDecimal[0],
 					null
-				}
+				},
 			}
 		);
 	}

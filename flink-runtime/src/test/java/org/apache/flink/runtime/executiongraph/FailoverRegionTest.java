@@ -605,17 +605,12 @@ public class FailoverRegionTest extends TestLogger {
 
 	private static void enableCheckpointing(ExecutionGraph eg) {
 		ArrayList<ExecutionJobVertex> jobVertices = new ArrayList<>(eg.getAllVertices().values());
-		CheckpointCoordinatorConfiguration chkConfig = new CheckpointCoordinatorConfiguration(
-			1000,
-			100,
-			0,
-			1,
-			CheckpointRetentionPolicy.RETAIN_ON_CANCELLATION,
-			true,
-			false,
-			0);
 		eg.enableCheckpointing(
-				chkConfig,
+				1000,
+				100,
+				0,
+				1,
+				CheckpointRetentionPolicy.RETAIN_ON_CANCELLATION,
 				jobVertices,
 				jobVertices,
 				jobVertices,
@@ -627,7 +622,8 @@ public class FailoverRegionTest extends TestLogger {
 					0,
 					jobVertices,
 					mock(CheckpointCoordinatorConfiguration.class),
-					new UnregisteredMetricsGroup()));
+					new UnregisteredMetricsGroup()),
+				false);
 	}
 
 	/**
@@ -689,7 +685,7 @@ public class FailoverRegionTest extends TestLogger {
 					new CheckpointMetrics(),
 					taskOperatorSubtaskStates);
 
-				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint, "Unknown location");
+				checkpointCoordinator.receiveAcknowledgeMessage(acknowledgeCheckpoint);
 			}
 		}
 	}

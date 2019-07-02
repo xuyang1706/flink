@@ -56,18 +56,18 @@ class TableSourceSinkTable[T1, T2](
   def isSourceTable: Boolean = tableSourceTable.isDefined
 
   def isStreamSourceTable: Boolean = tableSourceTable match {
-    case Some(tst) => tst.isStreaming
+    case Some(_: StreamTableSourceTable[_]) => true
     case _ => false
   }
 
   def isBatchSourceTable: Boolean = tableSourceTable match {
-    case Some(tst) => !tst.isStreaming
+    case Some(_: BatchTableSourceTable[_]) => true
     case _ => false
   }
 
   override def copy(statistic: FlinkStatistic): FlinkTable = {
     new TableSourceSinkTable[T1, T2](
-      tableSourceTable.map(source => source.copy(statistic)),
+      tableSourceTable.map(source => source.copy(statistic).asInstanceOf[TableSourceTable[T1]]),
       tableSinkTable.map(sink => sink.copy(statistic).asInstanceOf[TableSinkTable[T2]]))
   }
 

@@ -18,16 +18,11 @@
 
 package org.apache.flink.table.functions.aggfunctions;
 
-import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
-import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.utils.LogicalTypeDataTypeConverter;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 
-import java.util.Arrays;
-
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedRef;
 import static org.apache.flink.table.expressions.ExpressionBuilder.and;
 import static org.apache.flink.table.expressions.ExpressionBuilder.equalTo;
 import static org.apache.flink.table.expressions.ExpressionBuilder.ifThenElse;
@@ -40,9 +35,9 @@ import static org.apache.flink.table.expressions.ExpressionBuilder.plus;
  */
 public class RankAggFunction extends RankLikeAggFunctionBase {
 
-	private UnresolvedReferenceExpression currNumber = unresolvedRef("currNumber");
+	private UnresolvedReferenceExpression currNumber = new UnresolvedReferenceExpression("currNumber");
 
-	public RankAggFunction(LogicalType[] orderKeyTypes) {
+	public RankAggFunction(InternalType[] orderKeyTypes) {
 		super(orderKeyTypes);
 	}
 
@@ -56,13 +51,11 @@ public class RankAggFunction extends RankLikeAggFunctionBase {
 	}
 
 	@Override
-	public DataType[] getAggBufferTypes() {
-		DataType[] aggBufferTypes = new DataType[2 + orderKeyTypes.length];
-		aggBufferTypes[0] = DataTypes.BIGINT();
-		aggBufferTypes[1] = DataTypes.BIGINT();
-		System.arraycopy(Arrays.stream(orderKeyTypes)
-				.map(LogicalTypeDataTypeConverter::toDataType).toArray(DataType[]::new), 0,
-				aggBufferTypes, 2, orderKeyTypes.length);
+	public InternalType[] getAggBufferTypes() {
+		InternalType[] aggBufferTypes = new InternalType[2 + orderKeyTypes.length];
+		aggBufferTypes[0] = InternalTypes.LONG;
+		aggBufferTypes[1] = InternalTypes.LONG;
+		System.arraycopy(orderKeyTypes, 0, aggBufferTypes, 2, orderKeyTypes.length);
 		return aggBufferTypes;
 	}
 

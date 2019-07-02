@@ -19,7 +19,7 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
 import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.{CalcCodeGenerator, CodeGeneratorContext}
@@ -28,7 +28,7 @@ import org.apache.flink.table.plan.`trait`.{FlinkRelDistribution, FlinkRelDistri
 import org.apache.flink.table.plan.nodes.common.CommonCalc
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.util.RelExplainUtil
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan._
 import org.apache.calcite.rel._
 import org.apache.calcite.rel.`type`.RelDataType
@@ -36,9 +36,8 @@ import org.apache.calcite.rel.core.Calc
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexProgram}
 import org.apache.calcite.sql.SqlKind
 import org.apache.calcite.util.mapping.{Mapping, MappingType, Mappings}
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -133,16 +132,16 @@ class BatchExecCalc(
   }
 
   override def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val config = tableEnv.getConfig
     val inputTransform = getInputNodes.get(0).translateToPlan(tableEnv)
-        .asInstanceOf[Transformation[BaseRow]]
+        .asInstanceOf[StreamTransformation[BaseRow]]
     val condition = if (calcProgram.getCondition != null) {
       Some(calcProgram.expandLocalRef(calcProgram.getCondition))
     } else {
       None
     }
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
     val ctx = CodeGeneratorContext(config)
     val operator = CalcCodeGenerator.generateCalcOperator(
       ctx,
@@ -159,7 +158,7 @@ class BatchExecCalc(
       inputTransform,
       RelExplainUtil.calcToString(calcProgram, getExpressionString),
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
+      outputType.toTypeInfo,
+      config.getConf.getInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM))
   }
 }

@@ -123,7 +123,7 @@ public class Kafka011ITCase extends KafkaConsumerTestBase {
 
 	@Test(timeout = 60000)
 	public void testMultipleTopics() throws Exception {
-		runProduceConsumeMultipleTopics(true);
+		runProduceConsumeMultipleTopics();
 	}
 
 	@Test(timeout = 60000)

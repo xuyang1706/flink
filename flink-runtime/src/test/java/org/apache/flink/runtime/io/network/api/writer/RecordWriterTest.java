@@ -480,6 +480,11 @@ public class RecordWriterTest {
 		}
 
 		@Override
+		public BufferProvider getBufferProvider() {
+			return bufferProvider;
+		}
+
+		@Override
 		public ResultPartitionID getPartitionId() {
 			return partitionId;
 		}
@@ -495,13 +500,8 @@ public class RecordWriterTest {
 		}
 
 		@Override
-		public BufferBuilder getBufferBuilder() throws IOException, InterruptedException {
-			return bufferProvider.requestBufferBuilderBlocking();
-		}
-
-		@Override
-		public boolean addBufferConsumer(BufferConsumer buffer, int targetChannel) throws IOException {
-			return queues[targetChannel].add(buffer);
+		public void addBufferConsumer(BufferConsumer buffer, int targetChannel) throws IOException {
+			queues[targetChannel].add(buffer);
 		}
 
 		@Override
@@ -555,6 +555,11 @@ public class RecordWriterTest {
 		}
 
 		@Override
+		public BufferProvider getBufferProvider() {
+			return bufferProvider;
+		}
+
+		@Override
 		public ResultPartitionID getPartitionId() {
 			return partitionId;
 		}
@@ -570,14 +575,8 @@ public class RecordWriterTest {
 		}
 
 		@Override
-		public BufferBuilder getBufferBuilder() throws IOException, InterruptedException {
-			return bufferProvider.requestBufferBuilderBlocking();
-		}
-
-		@Override
-		public boolean addBufferConsumer(BufferConsumer bufferConsumer, int targetChannel) throws IOException {
+		public void addBufferConsumer(BufferConsumer bufferConsumer, int targetChannel) throws IOException {
 			bufferConsumer.close();
-			return true;
 		}
 
 		@Override

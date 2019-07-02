@@ -43,8 +43,7 @@ import org.apache.flink.table.runtime.join.lookup.AsyncLookupJoinWithCalcRunner;
 import org.apache.flink.table.runtime.join.lookup.LookupJoinRunner;
 import org.apache.flink.table.runtime.join.lookup.LookupJoinWithCalcRunner;
 import org.apache.flink.table.runtime.util.BaseRowHarnessAssertor;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalTypes;
 import org.apache.flink.table.typeutils.BaseRowSerializer;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 import org.apache.flink.util.Collector;
@@ -76,8 +75,8 @@ public class AsyncLookupJoinHarnessTest {
 
 	private final TypeSerializer<BaseRow> inSerializer = new BaseRowSerializer(
 		new ExecutionConfig(),
-		new IntType(),
-		new VarCharType(VarCharType.MAX_LENGTH));
+		InternalTypes.INT,
+		InternalTypes.STRING);
 
 	private final BaseRowHarnessAssertor assertor = new BaseRowHarnessAssertor(new TypeInformation[]{
 		Types.INT,
@@ -86,7 +85,7 @@ public class AsyncLookupJoinHarnessTest {
 		Types.STRING
 	});
 
-	private BaseRowTypeInfo rightRowTypeInfo = new BaseRowTypeInfo(new IntType(), new VarCharType(VarCharType.MAX_LENGTH));
+	private BaseRowTypeInfo rightRowTypeInfo = new BaseRowTypeInfo(InternalTypes.INT, InternalTypes.STRING);
 	private TypeInformation<?> fetcherReturnType = rightRowTypeInfo;
 
 	@Test

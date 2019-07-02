@@ -18,6 +18,16 @@
 
 package org.apache.flink.table.plan.metadata
 
+import org.apache.flink.table.JDouble
+import org.apache.flink.table.calcite.FlinkContext
+import org.apache.flink.table.plan.logical.{LogicalWindow, SlidingGroupWindow, TumblingGroupWindow}
+import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
+import org.apache.flink.table.plan.nodes.exec.NodeResourceConfig
+import org.apache.flink.table.plan.nodes.physical.batch._
+import org.apache.flink.table.plan.stats.ValueInterval
+import org.apache.flink.table.plan.util.AggregateUtil.{extractTimeIntervalValue, isTimeIntervalType}
+import org.apache.flink.table.plan.util.{FlinkRelMdUtil, SortUtil}
+
 import org.apache.calcite.adapter.enumerable.EnumerableLimit
 import org.apache.calcite.plan.volcano.RelSubset
 import org.apache.calcite.rel.core._
@@ -25,15 +35,6 @@ import org.apache.calcite.rel.metadata._
 import org.apache.calcite.rel.{RelNode, SingleRel}
 import org.apache.calcite.rex.{RexLiteral, RexNode}
 import org.apache.calcite.util._
-import org.apache.flink.table.JDouble
-import org.apache.flink.table.api.PlannerConfigOptions
-import org.apache.flink.table.calcite.FlinkContext
-import org.apache.flink.table.plan.logical.{LogicalWindow, SlidingGroupWindow, TumblingGroupWindow}
-import org.apache.flink.table.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
-import org.apache.flink.table.plan.nodes.physical.batch._
-import org.apache.flink.table.plan.stats.ValueInterval
-import org.apache.flink.table.plan.util.AggregateUtil.{hasTimeIntervalType, toLong}
-import org.apache.flink.table.plan.util.{FlinkRelMdUtil, SortUtil}
 
 import scala.collection.JavaConversions._
 
@@ -171,8 +172,7 @@ class FlinkRelMdRowCount private extends MetadataHandler[BuiltInMetadata.RowCoun
     } else {
       val inputRowCnt = mq.getRowCount(input)
       val config = rel.getCluster.getPlanner.getContext.asInstanceOf[FlinkContext].getTableConfig
-      val parallelism = (inputRowCnt /
-          config.getConf.getLong(PlannerConfigOptions.SQL_OPTIMIZER_ROWS_PER_LOCALAGG) + 1).toInt
+      val parallelism = NodeResourceConfig.calOperatorParallelism(inputRowCnt, config.getConf)
       if (parallelism == 1) {
         ndvOfGroupKeysOnGlobalAgg
       } else if (grouping.isEmpty) {
@@ -216,11 +216,11 @@ class FlinkRelMdRowCount private extends MetadataHandler[BuiltInMetadata.RowCoun
       val expandFactorOfOverLapSlidingWindow = 4D
       val expandFactorOfSessionWindow = 2D
       window match {
-        case TumblingGroupWindow(_, _, size) if hasTimeIntervalType(size) =>
+        case TumblingGroupWindow(_, _, size) if isTimeIntervalType(size.getType) =>
           Math.min(expandFactorOfTumblingWindow * ndv, inputRowCount)
-        case SlidingGroupWindow(_, _, size, slide) if hasTimeIntervalType(size) =>
-          val sizeValue = toLong(size)
-          val slideValue = toLong(slide)
+        case SlidingGroupWindow(_, _, size, slide) if isTimeIntervalType(size.getType) =>
+          val sizeValue = extractTimeIntervalValue(size)
+          val slideValue = extractTimeIntervalValue(slide)
           if (sizeValue > slideValue) {
             // only slideWindow which has overlap may generates more records than input
             expandFactorOfOverLapSlidingWindow * ndv

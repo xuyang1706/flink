@@ -127,18 +127,12 @@ public class ArchivedExecutionGraphTest extends TestLogger {
 				mock(CheckpointCoordinatorConfiguration.class),
 				new UnregisteredMetricsGroup());
 
-		CheckpointCoordinatorConfiguration chkConfig = new CheckpointCoordinatorConfiguration(
+		runtimeGraph.enableCheckpointing(
 			100,
 			100,
 			100,
 			1,
 			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-			true,
-			false,
-			0);
-
-		runtimeGraph.enableCheckpointing(
-			chkConfig,
 			Collections.<ExecutionJobVertex>emptyList(),
 			Collections.<ExecutionJobVertex>emptyList(),
 			Collections.<ExecutionJobVertex>emptyList(),
@@ -146,7 +140,8 @@ public class ArchivedExecutionGraphTest extends TestLogger {
 			new StandaloneCheckpointIDCounter(),
 			new StandaloneCompletedCheckpointStore(1),
 			new MemoryStateBackend(),
-			statsTracker);
+			statsTracker,
+			false);
 
 		runtimeGraph.setJsonPlan("{}");
 

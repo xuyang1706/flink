@@ -26,11 +26,7 @@ import org.apache.flink.table.dataformat.BinaryArrayWriter;
 import org.apache.flink.table.dataformat.BinaryMap;
 import org.apache.flink.table.dataformat.BinaryRow;
 import org.apache.flink.table.dataformat.GenericRow;
-import org.apache.flink.table.types.logical.ArrayType;
-import org.apache.flink.table.types.logical.DoubleType;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.MapType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalTypes;
 import org.apache.flink.testutils.DeeplyEqualsChecker;
 
 import org.junit.Rule;
@@ -81,7 +77,7 @@ public class BaseRowSerializerTest extends SerializerTestInstance<BaseRow> {
 	}
 
 	private static Object[] testBaseRowSerializer() {
-		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(new IntType(), new VarCharType(VarCharType.MAX_LENGTH));
+		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(InternalTypes.INT, InternalTypes.STRING);
 		GenericRow row1 = new GenericRow(2);
 		row1.setField(0, 1);
 		row1.setField(1, fromString("a"));
@@ -96,19 +92,19 @@ public class BaseRowSerializerTest extends SerializerTestInstance<BaseRow> {
 
 	private static Object[] testLargeBaseRowSerializer() {
 		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new IntType(),
-			new VarCharType(VarCharType.MAX_LENGTH));
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.INT,
+			InternalTypes.STRING);
 
 		GenericRow row = new GenericRow(13);
 		row.setField(0, 2);
@@ -130,11 +126,11 @@ public class BaseRowSerializerTest extends SerializerTestInstance<BaseRow> {
 
 	private static Object[] testBaseRowSerializerWithComplexTypes() {
 		BaseRowTypeInfo typeInfo = new BaseRowTypeInfo(
-			new IntType(),
-			new DoubleType(),
-			new VarCharType(VarCharType.MAX_LENGTH),
-			new ArrayType(new IntType()),
-			new MapType(new IntType(), new IntType()));
+			InternalTypes.INT,
+			InternalTypes.DOUBLE,
+			InternalTypes.STRING,
+			InternalTypes.createArrayType(InternalTypes.INT),
+			InternalTypes.createMapType(InternalTypes.INT, InternalTypes.INT));
 
 		GenericRow[] data = new GenericRow[]{
 			createRow(null, null, null, null, null),

@@ -18,6 +18,7 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
 import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.codegen.{CodeGeneratorContext, CorrelateCodeGenerator}
 import org.apache.flink.table.dataformat.BaseRow
@@ -26,6 +27,7 @@ import org.apache.flink.table.plan.`trait`.{FlinkRelDistribution, FlinkRelDistri
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.nodes.logical.FlinkLogicalTableFunctionScan
 import org.apache.flink.table.plan.util.RelExplainUtil
+
 import org.apache.calcite.plan.{RelOptCluster, RelOptRule, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.core.Correlate
@@ -33,9 +35,8 @@ import org.apache.calcite.rel.{RelCollationTraitDef, RelDistribution, RelFieldCo
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexNode, RexProgram}
 import org.apache.calcite.sql.{SemiJoinType, SqlKind}
 import org.apache.calcite.util.mapping.{Mapping, MappingType, Mappings}
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -188,9 +189,9 @@ class BatchExecCorrelate(
     * @param tableEnv The [[BatchTableEnvironment]] of the translated Table.
     */
   override def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
+      .asInstanceOf[StreamTransformation[BaseRow]]
     val operatorCtx = CodeGeneratorContext(tableEnv.getConfig)
     CorrelateCodeGenerator.generateCorrelateTransformation(
       tableEnv,
@@ -202,7 +203,7 @@ class BatchExecCorrelate(
       condition,
       outputRowType,
       joinType,
-      getResource.getParallelism,
+      tableEnv.getConfig.getConf.getInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM),
       retainHeader = false,
       getExpressionString,
       "BatchExecCorrelate")

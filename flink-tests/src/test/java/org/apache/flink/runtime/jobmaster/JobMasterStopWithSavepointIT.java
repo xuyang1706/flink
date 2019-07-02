@@ -245,8 +245,7 @@ public class JobMasterStopWithSavepointIT extends AbstractTestBase {
 						1,
 						CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 						true,
-						false,
-						0),
+						false),
 				null));
 
 		clusterClient.submitJob(jobGraph, ClassLoader.getSystemClassLoader());

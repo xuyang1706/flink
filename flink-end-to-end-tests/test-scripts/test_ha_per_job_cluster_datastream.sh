@@ -26,11 +26,18 @@ FLINK_LIB_DIR=${FLINK_DIR}/lib
 JOB_ID="00000000000000000000000000000000"
 
 function ha_cleanup() {
+  # don't call ourselves again for another signal interruption
+  trap "exit -1" INT
+  # don't call ourselves again for normal exit
+  trap "" EXIT
+
   stop_watchdogs
   kill_all 'StandaloneJobClusterEntryPoint'
+  rm ${FLINK_LIB_DIR}/${TEST_PROGRAM_JAR_NAME}
 }
 
-on_exit ha_cleanup
+trap ha_cleanup INT
+trap ha_cleanup EXIT
 
 function run_job() {
     local PARALLELISM=$1
@@ -107,7 +114,7 @@ function run_ha_test() {
 
     # change the pid dir to start log files always from 0, this is important for checks in the
     # jm killing loop
-    set_config_key "env.pid.dir" "${TEST_DATA_DIR}"
+    set_conf "env.pid.dir" "${TEST_DATA_DIR}"
 
     start_local_zk
 

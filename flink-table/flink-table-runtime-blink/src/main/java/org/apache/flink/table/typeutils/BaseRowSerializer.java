@@ -36,9 +36,8 @@ import org.apache.flink.table.dataformat.BinaryRowWriter;
 import org.apache.flink.table.dataformat.BinaryWriter;
 import org.apache.flink.table.dataformat.GenericRow;
 import org.apache.flink.table.dataformat.TypeGetterSetters;
-import org.apache.flink.table.types.InternalSerializers;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.TypeConverters;
 import org.apache.flink.util.InstantiationUtil;
 
 import java.io.IOException;
@@ -50,23 +49,17 @@ import java.util.Arrays;
 public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 
 	private BinaryRowSerializer binarySerializer;
-	private final LogicalType[] types;
+	private final InternalType[] types;
 	private final TypeSerializer[] fieldSerializers;
 
-	public BaseRowSerializer(ExecutionConfig config, RowType rowType) {
-		this(rowType.getChildren().toArray(new LogicalType[0]),
-			rowType.getChildren().stream()
-				.map((LogicalType type) -> InternalSerializers.create(type, config))
+	public BaseRowSerializer(ExecutionConfig config, InternalType... types) {
+		this(types, Arrays.stream(types)
+				.map(TypeConverters::createInternalTypeInfoFromInternalType)
+				.map(ti -> ti.createSerializer(config))
 				.toArray(TypeSerializer[]::new));
 	}
 
-	public BaseRowSerializer(ExecutionConfig config, LogicalType... types) {
-		this(types, Arrays.stream(types)
-			.map((LogicalType type) -> InternalSerializers.create(type, config))
-			.toArray(TypeSerializer[]::new));
-	}
-
-	public BaseRowSerializer(LogicalType[] types, TypeSerializer[] fieldSerializers) {
+	public BaseRowSerializer(InternalType[] types, TypeSerializer[] fieldSerializers) {
 		this.types = types;
 		this.fieldSerializers = fieldSerializers;
 		this.binarySerializer = new BinaryRowSerializer(types.length);
@@ -186,25 +179,6 @@ public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 		return binaryRow;
 	}
 
-	public static BinaryRow baseRowToBinary(BaseRow row, RowType type) {
-		if (row instanceof BinaryRow) {
-			return (BinaryRow) row;
-		}
-		BinaryRow binaryRow = new BinaryRow(type.getFields().size());
-		BinaryRowWriter writer = new BinaryRowWriter(binaryRow);
-		writer.writeHeader(row.getHeader());
-		for (int i = 0; i < binaryRow.getArity(); i++) {
-			if (row.isNullAt(i)) {
-				writer.setNullAt(i);
-			} else {
-				LogicalType fieldType = type.getFields().get(i).getType();
-				BinaryWriter.write(writer, i, TypeGetterSetters.get(row, i, fieldType), fieldType);
-			}
-		}
-		writer.complete();
-		return binaryRow;
-	}
-
 	@Override
 	public int serializeToPages(BaseRow row, AbstractPagedOutputView target) throws IOException {
 		return binarySerializer.serializeToPages(baseRowToBinary(row), target);
@@ -275,7 +249,7 @@ public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 	public static final class BaseRowSerializerSnapshot implements TypeSerializerSnapshot<BaseRow> {
 		private static final int CURRENT_VERSION = 3;
 
-		private LogicalType[] previousTypes;
+		private InternalType[] previousTypes;
 		private NestedSerializersSnapshotDelegate nestedSerializersSnapshotDelegate;
 
 		@SuppressWarnings("unused")
@@ -283,7 +257,7 @@ public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 			// this constructor is used when restoring from a checkpoint/savepoint.
 		}
 
-		BaseRowSerializerSnapshot(LogicalType[] types, TypeSerializer[] serializers) {
+		BaseRowSerializerSnapshot(InternalType[] types, TypeSerializer[] serializers) {
 			this.previousTypes = types;
 			this.nestedSerializersSnapshotDelegate = new NestedSerializersSnapshotDelegate(
 					serializers);
@@ -298,7 +272,7 @@ public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 		public void writeSnapshot(DataOutputView out) throws IOException {
 			out.writeInt(previousTypes.length);
 			DataOutputViewStream stream = new DataOutputViewStream(out);
-			for (LogicalType previousType : previousTypes) {
+			for (InternalType previousType : previousTypes) {
 				InstantiationUtil.serializeObject(stream, previousType);
 			}
 			nestedSerializersSnapshotDelegate.writeNestedSerializerSnapshots(out);
@@ -309,7 +283,7 @@ public class BaseRowSerializer extends AbstractRowSerializer<BaseRow> {
 				throws IOException {
 			int length = in.readInt();
 			DataInputViewStream stream = new DataInputViewStream(in);
-			previousTypes = new LogicalType[length];
+			previousTypes = new InternalType[length];
 			for (int i = 0; i < length; i++) {
 				try {
 					previousTypes[i] = InstantiationUtil.deserializeObject(

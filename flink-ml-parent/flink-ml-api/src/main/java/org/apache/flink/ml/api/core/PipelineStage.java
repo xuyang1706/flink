@@ -18,9 +18,14 @@
 
 package org.apache.flink.ml.api.core;
 
+import org.apache.flink.ml.api.misc.param.ParamInfo;
 import org.apache.flink.ml.api.misc.param.WithParams;
+import org.apache.flink.ml.util.param.ExtractParamInfosUtil;
 
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Base class for a stage in a pipeline. The interface is only a concept, and does not have any
@@ -41,6 +46,11 @@ interface PipelineStage<T extends PipelineStage<T>> extends WithParams<T>, Seria
 	}
 
 	default void loadJson(String json) {
-		getParams().loadJson(json);
+		List<ParamInfo> paramInfos = ExtractParamInfosUtil.extractParamInfos(this);
+		Map<String, Class<?>> classMap = new HashMap<>();
+		for (ParamInfo i : paramInfos) {
+			classMap.put(i.getName(), i.getValueClass());
+		}
+		getParams().loadJson(json, classMap);
 	}
 }

@@ -20,7 +20,7 @@ package org.apache.flink.table.runtime.over;
 
 import org.apache.flink.table.dataformat.BaseRow;
 import org.apache.flink.table.generated.GeneratedAggsHandleFunction;
-import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.type.InternalType;
 import org.apache.flink.util.Collector;
 
 import java.util.List;
@@ -47,8 +47,8 @@ public class RowTimeRangeUnboundedPrecedingFunction<K> extends AbstractRowTimeUn
 			long minRetentionTime,
 			long maxRetentionTime,
 			GeneratedAggsHandleFunction genAggsHandler,
-			LogicalType[] accTypes,
-			LogicalType[] inputFieldTypes,
+			InternalType[] accTypes,
+			InternalType[] inputFieldTypes,
 			int rowTimeIdx) {
 		super(minRetentionTime, maxRetentionTime, genAggsHandler, accTypes, inputFieldTypes, rowTimeIdx);
 	}

@@ -172,8 +172,6 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 
 		keyComparator = genKeyComparator.newInstance(cl);
 		this.condFunc = condFuncCode.newInstance(cl);
-		condFunc.setRuntimeContext(getRuntimeContext());
-		condFunc.open(new Configuration());
 
 		projection1 = projectionCode1.newInstance(cl);
 		projection2 = projectionCode2.newInstance(cl);
@@ -458,7 +456,6 @@ public class SortMergeJoinOperator extends TableStreamOperator<BaseRow>
 		if (this.sorter2 != null) {
 			this.sorter2.close();
 		}
-		condFunc.close();
 	}
 
 }

@@ -19,10 +19,8 @@ package org.apache.flink.table.plan.util
 
 import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-import org.apache.flink.table.api.TableConfig
+import org.apache.flink.table.api.{TableConfig, TableImpl}
 import org.apache.flink.table.api.scala.{StreamTableEnvironment, _}
-import org.apache.flink.table.util.TableTestUtil
-
 import org.apache.calcite.sql.SqlExplainLevel
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -45,7 +43,7 @@ class FlinkRelOptUtilTest {
         |SELECT * FROM t1 JOIN t2 ON t1.a = t2.a
       """.stripMargin
     val result = tableEnv.sqlQuery(sqlQuery)
-    val rel = TableTestUtil.toRelNode(result)
+    val rel = result.asInstanceOf[TableImpl].getRelNode
 
     val expected1 =
       """
@@ -53,10 +51,10 @@ class FlinkRelOptUtilTest {
         |+- LogicalJoin(condition=[=($0, $2)], joinType=[inner])
         |   :- LogicalProject(a=[$0], c=[$2])
         |   :  +- LogicalFilter(condition=[>($1, 50)])
-        |   :     +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+        |   :     +- LogicalTableScan(table=[[MyTable]])
         |   +- LogicalProject(a=[*($0, 2)], c=[$2])
         |      +- LogicalFilter(condition=[<($1, 50)])
-        |         +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+        |         +- LogicalTableScan(table=[[MyTable]])
       """.stripMargin
     assertEquals(expected1.trim, FlinkRelOptUtil.toString(rel).trim)
 

@@ -223,7 +223,8 @@ public class RemoteStreamEnvironment extends StreamExecutionEnvironment {
 		String jobName,
 		SavepointRestoreSettings savepointRestoreSettings
 	) throws ProgramInvocationException {
-		StreamGraph streamGraph = streamExecutionEnvironment.getStreamGraph(jobName);
+		StreamGraph streamGraph = streamExecutionEnvironment.getStreamGraph();
+		streamGraph.setJobName(jobName);
 		return executeRemotely(streamGraph,
 			streamExecutionEnvironment.getClass().getClassLoader(),
 			streamExecutionEnvironment.getConfig(),
@@ -303,7 +304,8 @@ public class RemoteStreamEnvironment extends StreamExecutionEnvironment {
 
 	@Override
 	public JobExecutionResult execute(String jobName) throws ProgramInvocationException {
-		StreamGraph streamGraph = getStreamGraph(jobName);
+		StreamGraph streamGraph = getStreamGraph();
+		streamGraph.setJobName(jobName);
 		transformations.clear();
 		return executeRemotely(streamGraph, jarFiles);
 	}

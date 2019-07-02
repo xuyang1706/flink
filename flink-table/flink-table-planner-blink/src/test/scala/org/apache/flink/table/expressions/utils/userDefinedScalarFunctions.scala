@@ -313,22 +313,6 @@ object Func20 extends ScalarFunction {
   }
 }
 
-class FuncWithOpen extends ScalarFunction {
-  private var permitted: Boolean = false
-
-  override def open(context: FunctionContext): Unit = {
-    permitted = true
-  }
-
-  def eval(x: Int): Boolean = {
-    permitted
-  }
-
-  override def close(): Unit = {
-    permitted = false
-  }
-}
-
 class SplitUDF(deterministic: Boolean) extends ScalarFunction {
   def eval(x: String, sep: String, index: Int): String = {
     val splits = StringUtils.splitByWholeSeparator(x, sep)

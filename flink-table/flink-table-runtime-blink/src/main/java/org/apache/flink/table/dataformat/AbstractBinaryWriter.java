@@ -20,7 +20,6 @@ package org.apache.flink.table.dataformat;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.typeutils.BaseRowSerializer;
 import org.apache.flink.table.util.SegmentsUtil;
 
@@ -135,13 +134,12 @@ public abstract class AbstractBinaryWriter implements BinaryWriter {
 	}
 
 	@Override
-	public void writeRow(int pos, BaseRow input, RowType type) {
+	public void writeRow(int pos, BaseRow input, BaseRowSerializer serializer) {
 		if (input instanceof BinaryFormat) {
 			BinaryFormat row = (BinaryFormat) input;
 			writeSegmentsToVarLenPart(pos, row.getSegments(), row.getOffset(), row.getSizeInBytes());
 		} else {
-			BinaryRow row = BaseRowSerializer.baseRowToBinary(input, type);
-			writeSegmentsToVarLenPart(pos, row.getSegments(), row.getOffset(), row.getSizeInBytes());
+			writeRow(pos, serializer.baseRowToBinary(input), serializer);
 		}
 	}
 

@@ -15,19 +15,22 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-import logging
 import os
-import shutil
-import sys
 import tempfile
 
-from pyflink.dataset import ExecutionEnvironment
-from pyflink.table import BatchTableEnvironment, TableConfig
-from pyflink.table.descriptors import FileSystem, OldCsv, Schema
+from pyflink.table import TableEnvironment, TableConfig
+from pyflink.table.table_sink import CsvTableSink
+from pyflink.table.table_source import CsvTableSource
 from pyflink.table.types import DataTypes
 
 
+# TODO: the word_count.py is just a test example for CLI.
+#  After pyflink have aligned Java Table API Connectors, this example will be improved.
 def word_count():
+    tmp_dir = tempfile.gettempdir()
+    source_path = tmp_dir + '/streaming.csv'
+    if os.path.isfile(source_path):
+        os.remove(source_path)
     content = "line Licensed to the Apache Software Foundation ASF under one " \
               "line or more contributor license agreements See the NOTICE file " \
               "line distributed with this work for additional information " \
@@ -36,44 +39,41 @@ def word_count():
               "License you may not use this file except in compliance " \
               "with the License"
 
-    t_config = TableConfig()
-    env = ExecutionEnvironment.get_execution_environment()
-    t_env = BatchTableEnvironment.create(env, t_config)
+    with open(source_path, 'w') as f:
+        for word in content.split(" "):
+            f.write(",".join([word, "1"]))
+            f.write("\n")
+            f.flush()
+        f.close()
+
+    t_config = TableConfig.Builder().as_batch_execution().set_parallelism(1).build()
+    t_env = TableEnvironment.create(t_config)
+
+    field_names = ["word", "cout"]
+    field_types = [DataTypes.STRING, DataTypes.LONG]
+
+    # register Orders table in table environment
+    t_env.register_table_source(
+        "Word",
+        CsvTableSource(source_path, field_names, field_types))
 
     # register Results table in table environment
     tmp_dir = tempfile.gettempdir()
-    result_path = tmp_dir + '/result'
-    if os.path.exists(result_path):
-        try:
-            if os.path.isfile(result_path):
-                os.remove(result_path)
-            else:
-                shutil.rmtree(result_path)
-        except OSError as e:
-            logging.error("Error removing directory: %s - %s.", e.filename, e.strerror)
+    tmp_csv = tmp_dir + '/streaming2.csv'
+    if os.path.isfile(tmp_csv):
+        os.remove(tmp_csv)
 
-    logging.info("Results directory: %s", result_path)
+    t_env.register_table_sink(
+        "Results",
+        field_names, field_types, CsvTableSink(tmp_csv))
 
-    t_env.connect(FileSystem().path(result_path)) \
-        .with_format(OldCsv()
-                     .field_delimiter(',')
-                     .field("word", DataTypes.STRING())
-                     .field("count", DataTypes.BIGINT())) \
-        .with_schema(Schema()
-                     .field("word", DataTypes.STRING())
-                     .field("count", DataTypes.BIGINT())) \
-        .register_table_sink("Results")
+    t_env.scan("Word") \
+        .group_by("word") \
+        .select("word, count(1) as count") \
+        .insert_into("Results")
 
-    elements = [(word, 1) for word in content.split(" ")]
-    t_env.from_elements(elements, ["word", "count"]) \
-         .group_by("word") \
-         .select("word, count(1) as count") \
-         .insert_into("Results")
-
-    env.execute()
+    t_env.execute()
 
 
 if __name__ == '__main__':
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
-
     word_count()

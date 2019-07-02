@@ -17,7 +17,13 @@
  */
 package org.apache.flink.table.plan.nodes.physical.stream
 
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
+import org.apache.calcite.rel.`type`.RelDataType
+import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.calcite.tools.RelBuilder
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
 import org.apache.flink.table.api.{StreamTableEnvironment, TableConfig, TableConfigOptions, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.agg.AggsHandlerCodeGenerator
@@ -30,16 +36,9 @@ import org.apache.flink.table.plan.rules.physical.stream.StreamExecRetractionRul
 import org.apache.flink.table.plan.util._
 import org.apache.flink.table.runtime.aggregate.MiniBatchGlobalGroupAggFunction
 import org.apache.flink.table.runtime.bundle.KeyedMapBundleOperator
-import org.apache.flink.table.types.DataType
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
-import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
-import org.apache.calcite.rel.`type`.RelDataType
-import org.apache.calcite.rel.{RelNode, RelWriter}
-import org.apache.calcite.tools.RelBuilder
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -112,7 +111,7 @@ class StreamExecGlobalGroupAggregate(
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: StreamTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
     val tableConfig = tableEnv.getConfig
 
     if (grouping.length > 0 && tableConfig.getMinIdleStateRetentionTime < 0) {
@@ -122,9 +121,9 @@ class StreamExecGlobalGroupAggregate(
     }
 
     val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
+      .asInstanceOf[StreamTransformation[BaseRow]]
 
-    val outRowType = FlinkTypeFactory.toLogicalRowType(outputRowType)
+    val outRowType = FlinkTypeFactory.toInternalRowType(outputRowType)
 
     val generateRetraction = StreamExecRetractionRules.isAccRetract(this)
 
@@ -153,10 +152,10 @@ class StreamExecGlobalGroupAggregate(
       inputFieldCopy = true)
 
     val indexOfCountStar = globalAggInfoList.getIndexOfCountStar
-    val globalAccTypes = globalAggInfoList.getAccTypes.map(fromDataTypeToLogicalType)
+    val globalAccTypes = globalAggInfoList.getAccTypes.map(createInternalTypeFromTypeInfo)
     val globalAggValueTypes = globalAggInfoList
       .getActualValueTypes
-      .map(fromDataTypeToLogicalType)
+      .map(createInternalTypeFromTypeInfo)
     val recordEqualiser = new EqualiserCodeGenerator(globalAggValueTypes)
       .generateRecordEqualiser("GroupAggValueEqualiser")
 
@@ -185,11 +184,12 @@ class StreamExecGlobalGroupAggregate(
       inputTransformation,
       "GlobalGroupAggregate",
       operator,
-      BaseRowTypeInfo.of(outRowType),
-      getResource.getParallelism)
+      outRowType.toTypeInfo,
+      tableEnv.execEnv.getParallelism)
 
-    if (getResource.getMaxParallelism > 0) {
-      ret.setMaxParallelism(getResource.getMaxParallelism)
+    if (grouping.isEmpty) {
+      ret.setParallelism(1)
+      ret.setMaxParallelism(1)
     }
 
     // set KeyType and Selector for state
@@ -203,7 +203,7 @@ class StreamExecGlobalGroupAggregate(
       aggInfoList: AggregateInfoList,
       mergedAccOffset: Int,
       mergedAccOnHeap: Boolean,
-      mergedAccExternalTypes: Array[DataType],
+      mergedAccExternalTypes: Array[TypeInformation[_]],
       config: TableConfig,
       relBuilder: RelBuilder,
       inputFieldCopy: Boolean): GeneratedAggsHandleFunction = {
@@ -211,7 +211,7 @@ class StreamExecGlobalGroupAggregate(
     val generator = new AggsHandlerCodeGenerator(
       CodeGeneratorContext(config),
       relBuilder,
-      FlinkTypeFactory.toLogicalRowType(inputRowType).getChildren,
+      FlinkTypeFactory.toInternalRowType(inputRowType).getFieldTypes,
       inputFieldCopy)
 
     generator

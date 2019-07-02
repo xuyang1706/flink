@@ -92,17 +92,9 @@ jobs:
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11"
       name: libraries
     - if: type in (pull_request, push)
-      script: ./tools/travis_controller.sh blink_planner
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11"
-      name: blink_planner
-    - if: type in (pull_request, push)
       script: ./tools/travis_controller.sh connectors
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11"
       name: connectors
-    - if: type in (pull_request, push)
-      script: ./tools/travis_controller.sh kafka/gelly
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11"
-      name: kafka/gelly
     - if: type in (pull_request, push)
       script: ./tools/travis_controller.sh tests
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11"
@@ -132,17 +124,9 @@ jobs:
       env: PROFILE="-Dhadoop.version=2.4.1 -Pinclude-kinesis"
       name: libraries - hadoop 2.4.1
     - if: type = cron
-      script: ./tools/travis_controller.sh blink_planner
-      env: PROFILE="-Dhadoop.version=2.4.1 -Pinclude-kinesis"
-      name: blink_planner - hadoop 2.4.1
-    - if: type = cron
       script: ./tools/travis_controller.sh connectors
       env: PROFILE="-Dhadoop.version=2.4.1 -Pinclude-kinesis"
       name: connectors - hadoop 2.4.1
-    - if: type = cron
-      script: ./tools/travis_controller.sh kafka/gelly
-      env: PROFILE="-Dhadoop.version=2.4.1 -Pinclude-kinesis"
-      name: kafka/gelly - hadoop 2.4.1
     - if: type = cron
       script: ./tools/travis_controller.sh tests
       env: PROFILE="-Dhadoop.version=2.4.1 -Pinclude-kinesis"
@@ -172,17 +156,9 @@ jobs:
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.12"
       name: libraries - scala 2.12
     - if: type = cron
-      script: ./tools/travis_controller.sh blink_planner
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.12"
-      name: blink_planner - scala 2.12
-    - if: type = cron
       script: ./tools/travis_controller.sh connectors
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.12"
       name: connectors - scala 2.12
-    - if: type = cron
-      script: ./tools/travis_controller.sh kafka/gelly
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.12"
-      name: kafka/gelly - scala 2.12
     - if: type = cron
       script: ./tools/travis_controller.sh tests
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.12"
@@ -221,19 +197,9 @@ jobs:
       name: libraries - jdk 9
     - if: type = cron
       jdk: "openjdk9"
-      script: ./tools/travis_controller.sh blink_planner
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11 -Djdk9"
-      name: blink_planner - jdk 9
-    - if: type = cron
-      jdk: "openjdk9"
       script: ./tools/travis_controller.sh connectors
       env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11 -Djdk9"
       name: connectors - jdk 9
-    - if: type = cron
-      jdk: "openjdk9"
-      script: ./tools/travis_controller.sh kafka/gelly
-      env: PROFILE="-Dhadoop.version=2.8.3 -Pinclude-kinesis -Dinclude_hadoop_aws -Dscala-2.11 -Djdk9"
-      name: kafka/gelly - jdk 9
     - if: type = cron
       jdk: "openjdk9"
       script: ./tools/travis_controller.sh tests

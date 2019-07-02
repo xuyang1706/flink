@@ -32,6 +32,7 @@ import org.apache.flink.client.program.PackagedProgramUtils;
 import org.apache.flink.client.program.ProgramInvocationException;
 import org.apache.flink.client.program.ProgramMissingJobException;
 import org.apache.flink.client.program.ProgramParametrizationException;
+import org.apache.flink.client.python.PythonDriver;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
@@ -80,6 +81,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -123,7 +125,8 @@ public class CliFrontend {
 		this.configuration = Preconditions.checkNotNull(configuration);
 		this.customCommandLines = Preconditions.checkNotNull(customCommandLines);
 
-		FileSystem.initialize(configuration, PluginUtils.createPluginManagerFromRootFolder(configuration));
+		//TODO provide plugin path.
+		FileSystem.initialize(this.configuration, PluginUtils.createPluginManagerFromRootFolder(Optional.empty()));
 
 		this.customCommandLineOptions = new Options();
 
@@ -772,25 +775,22 @@ public class CliFrontend {
 		String jarFilePath = options.getJarFilePath();
 		List<URL> classpaths = options.getClasspaths();
 
-		// Get assembler class
-		String entryPointClass = options.getEntryPointClassName();
+		String entryPointClass;
 		File jarFile = null;
 		if (options.isPython()) {
 			// If the job is specified a jar file
 			if (jarFilePath != null) {
 				jarFile = getJarFile(jarFilePath);
 			}
-
-			// If the job is Python Shell job, the entry point class name is PythonGateWayServer.
-			// Otherwise, the entry point class of python job is PythonDriver
-			if (entryPointClass == null) {
-				entryPointClass = "org.apache.flink.client.python.PythonDriver";
-			}
+			// The entry point class of python job is PythonDriver
+			entryPointClass = PythonDriver.class.getCanonicalName();
 		} else {
 			if (jarFilePath == null) {
 				throw new IllegalArgumentException("Java program should be specified a JAR file.");
 			}
 			jarFile = getJarFile(jarFilePath);
+			// Get assembler class
+			entryPointClass = options.getEntryPointClassName();
 		}
 
 		PackagedProgram program = entryPointClass == null ?

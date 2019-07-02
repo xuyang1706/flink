@@ -18,8 +18,7 @@
 
 package org.apache.flink.table.plan.optimize
 
-import org.apache.flink.table.api.{StreamTableEnvironment, TableConfig}
-import org.apache.flink.table.catalog.FunctionCatalog
+import org.apache.flink.table.api.{StreamTableEnvironment, TableConfig, TableImpl}
 import org.apache.flink.table.plan.`trait`.{AccMode, AccModeTraitDef, UpdateAsRetractionTraitDef}
 import org.apache.flink.table.plan.metadata.FlinkRelMetadataQuery
 import org.apache.flink.table.plan.nodes.calcite.Sink
@@ -30,6 +29,7 @@ import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.sinks.{DataStreamTableSink, RetractStreamTableSink}
 import org.apache.flink.util.Preconditions
 
+import org.apache.calcite.plan.volcano.VolcanoPlanner
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.core.TableScan
 import org.apache.calcite.rex.RexBuilder
@@ -46,7 +46,7 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
 
   override protected def doOptimize(roots: Seq[RelNode]): Seq[RelNodeBlock] = {
     // build RelNodeBlock plan
-    val sinkBlocks = RelNodeBlockPlanBuilder.buildRelNodeBlockPlan(roots, tEnv.getConfig)
+    val sinkBlocks = RelNodeBlockPlanBuilder.buildRelNodeBlockPlan(roots, tEnv)
     // infer updateAsRetraction property for sink block
     sinkBlocks.foreach { sinkBlock =>
       val retractionFromRoot = sinkBlock.outputNode match {
@@ -112,10 +112,10 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
           isSinkBlock = isSinkBlock)
         val isAccRetract = optimizedPlan.getTraitSet
           .getTrait(AccModeTraitDef.INSTANCE).getAccMode == AccMode.AccRetract
-        val name = createUniqueIntermediateRelTableName
-        val intermediateRelTable = createIntermediateRelTable(optimizedPlan, isAccRetract)
-        val newTableScan = wrapIntermediateRelTableToTableScan(intermediateRelTable, name)
-        block.setNewOutputNode(newTableScan)
+        val name = tEnv.createUniqueTableName()
+        registerIntermediateTable(tEnv, name, optimizedPlan, isAccRetract)
+        val newTable = tEnv.scan(name)
+        block.setNewOutputNode(newTable.asInstanceOf[TableImpl].getRelNode)
         block.setOutputTableName(name)
         block.setOptimizedPlan(optimizedPlan)
     }
@@ -141,13 +141,13 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
 
     programs.optimize(relNode, new StreamOptimizeContext() {
 
-      override def getTableConfig: TableConfig = config
-
-      override def getFunctionCatalog: FunctionCatalog = tEnv.functionCatalog
-
       override def getRexBuilder: RexBuilder = tEnv.getRelBuilder.getRexBuilder
 
       override def needFinalTimeIndicatorConversion: Boolean = true
+
+      override def getTableConfig: TableConfig = config
+
+      override def getVolcanoPlanner: VolcanoPlanner = tEnv.getPlanner.asInstanceOf[VolcanoPlanner]
 
       override def updateAsRetraction: Boolean = updatesAsRetraction
     })
@@ -184,10 +184,10 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
       case o =>
         val optimizedPlan = optimizeTree(
           o, retractionFromRoot, isSinkBlock = isSinkBlock)
-        val name = createUniqueIntermediateRelTableName
-        val intermediateRelTable = createIntermediateRelTable(optimizedPlan, isAccRetract = false)
-        val newTableScan = wrapIntermediateRelTableToTableScan(intermediateRelTable, name)
-        block.setNewOutputNode(newTableScan)
+        val name = tEnv.createUniqueTableName()
+        registerIntermediateTable(tEnv, name, optimizedPlan, isAccRetract = false)
+        val newTable = tEnv.scan(name)
+        block.setNewOutputNode(newTable.asInstanceOf[TableImpl].getRelNode)
         block.setOutputTableName(name)
         block.setOptimizedPlan(optimizedPlan)
     }
@@ -206,8 +206,8 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
         case _: StreamExecDataStreamScan | _: StreamExecIntermediateTableScan =>
           val scan = rel.asInstanceOf[TableScan]
           val retractionTrait = scan.getTraitSet.getTrait(UpdateAsRetractionTraitDef.INSTANCE)
-          val tableName = scan.getTable.getQualifiedName.mkString(".")
-          val inputBlocks = block.children.filter(b => tableName.equals(b.getOutputTableName))
+          val tableName = scan.getTable.getQualifiedName.last
+          val inputBlocks = block.children.filter(_.getOutputTableName eq tableName)
           Preconditions.checkArgument(inputBlocks.size <= 1)
           if (inputBlocks.size == 1) {
             if (retractionTrait.sendsUpdatesAsRetractions || updateAsRetraction) {
@@ -245,10 +245,12 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
     }
   }
 
-  private def createIntermediateRelTable(
+  private def registerIntermediateTable(
+      tEnv: StreamTableEnvironment,
+      name: String,
       relNode: RelNode,
-      isAccRetract: Boolean): IntermediateRelTable = {
-    val uniqueKeys = getUniqueKeys(relNode)
+      isAccRetract: Boolean): Unit = {
+    val uniqueKeys = getUniqueKeys(tEnv, relNode)
     val monotonicity = FlinkRelMetadataQuery
       .reuseOrCreate(tEnv.getRelBuilder.getCluster.getMetadataQuery)
       .getRelModifiedMonotonicity(relNode)
@@ -257,10 +259,16 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
       .relModifiedMonotonicity(monotonicity)
       .build()
 
-    new IntermediateRelTable(relNode, isAccRetract, statistic)
+    val table = new IntermediateRelTable(
+      relNode,
+      isAccRetract,
+      statistic)
+    tEnv.registerTableInternal(name, table)
   }
 
-  private def getUniqueKeys(relNode: RelNode): util.Set[_ <: util.Set[String]] = {
+  private def getUniqueKeys(
+      tEnv: StreamTableEnvironment,
+      relNode: RelNode): util.Set[_ <: util.Set[String]] = {
     val rowType = relNode.getRowType
     val fmq = FlinkRelMetadataQuery.reuseOrCreate(tEnv.getRelBuilder.getCluster.getMetadataQuery)
     val uniqueKeys = fmq.getUniqueKeys(relNode)

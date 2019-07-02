@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -27,8 +28,8 @@ import org.apache.flink.util.FlinkRuntimeException;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -40,8 +41,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  * in a blocking manner: The result is first produced, then consumed.
  * The result can be consumed possibly multiple times.
  *
- * <p>Depending on the supplied implementation of {@link BoundedData}, the actual data is stored
- * for example in a file, or in a temporary memory mapped file.
+ * <p>The implementation creates a temporary memory mapped file and writes all buffers to that
+ * memory and serves the result from that memory. The kernel backs the mapped memory region
+ * with physical memory and file space incrementally as new pages are filled.
  *
  * <h2>Important Notes on Thread Safety</h2>
  *
@@ -55,7 +57,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * <p>The implementation supports multiple concurrent readers, but assumes a single
  * thread per reader. That same thread must also release the reader. In particular, after the reader
  * was released, no buffers obtained from this reader may be accessed any more, or segmentation
- * faults might occur in some implementations.
+ * faults might occur.
  *
  * <p>The method calls to create readers, dispose readers, and dispose the partition are
  * thread-safe vis-a-vis each other.
@@ -69,8 +71,8 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 	@Nullable
 	private BufferConsumer currentBuffer;
 
-	/** The bounded data store that we store the data in. */
-	private final BoundedData data;
+	/** The memory that we store the data in, via a memory mapped file. */
+	private final MemoryMappedBuffers memory;
 
 	/** All created and not yet released readers. */
 	@GuardedBy("lock")
@@ -88,14 +90,29 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 	/** Flag indicating whether the subpartition has been released. */
 	private boolean isReleased;
 
+	/**
+	 * Common constructor.
+	 */
 	public BoundedBlockingSubpartition(
 			int index,
 			ResultPartition parent,
-			BoundedData data) {
+			Path filePath) throws IOException {
+
+		this(index, parent, MemoryMappedBuffers.create(filePath));
+	}
+
+	/**
+	 * Constructor for testing, to pass in custom MemoryMappedBuffers.
+	 */
+	@VisibleForTesting
+	BoundedBlockingSubpartition(
+			int index,
+			ResultPartition parent,
+			MemoryMappedBuffers memory) throws IOException {
 
 		super(index, parent);
 
-		this.data = checkNotNull(data);
+		this.memory = checkNotNull(memory);
 		this.readers = new HashSet<>();
 	}
 
@@ -149,7 +166,7 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 		try {
 			final Buffer buffer = bufferConsumer.build();
 			try {
-				data.writeBuffer(buffer);
+				memory.writeBuffer(buffer);
 
 				numBuffersAndEventsWritten++;
 				if (buffer.isBuffer()) {
@@ -173,7 +190,7 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 		isFinished = true;
 		flushCurrentBuffer();
 		writeAndCloseBufferConsumer(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE));
-		data.finishWrite();
+		memory.finishWrite();
 	}
 
 	@Override
@@ -198,9 +215,9 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 
 			availability.notifyDataAvailable();
 
-			final BoundedData.Reader dataReader = data.createReader();
+			final MemoryMappedBuffers.BufferSlicer memoryReader = memory.getFullBuffers();
 			final BoundedBlockingSubpartitionReader reader = new BoundedBlockingSubpartitionReader(
-					this, dataReader, numDataBuffersWritten);
+					this, memoryReader, numDataBuffersWritten);
 			readers.add(reader);
 			return reader;
 		}
@@ -223,7 +240,7 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 		// To avoid segmentation faults, we need to wait until all readers have been released.
 
 		if (readers.isEmpty()) {
-			data.close();
+			memory.close();
 		}
 	}
 
@@ -248,50 +265,10 @@ final class BoundedBlockingSubpartition extends ResultSubpartition {
 
 	@Override
 	protected long getTotalNumberOfBytes() {
-		return data.getSize();
+		return memory.getSize();
 	}
 
 	int getBuffersInBacklog() {
 		return numDataBuffersWritten;
-	}
-
-	// ---------------------------- factories --------------------------------
-
-	/**
-	 * Creates a BoundedBlockingSubpartition that simply stores the partition data in a file.
-	 * Data is eagerly spilled (written to disk) and readers directly read from the file.
-	 */
-	public static BoundedBlockingSubpartition createWithFileChannel(
-			int index, ResultPartition parent, File tempFile, int readBufferSize) throws IOException {
-
-		final FileChannelBoundedData bd = FileChannelBoundedData.create(tempFile.toPath(), readBufferSize);
-		return new BoundedBlockingSubpartition(index, parent, bd);
-	}
-
-	/**
-	 * Creates a BoundedBlockingSubpartition that stores the partition data in memory mapped file.
-	 * Data is written to and read from the mapped memory region. Disk spilling happens lazily, when the
-	 * OS swaps out the pages from the memory mapped file.
-	 */
-	public static BoundedBlockingSubpartition createWithMemoryMappedFile(
-			int index, ResultPartition parent, File tempFile) throws IOException {
-
-		final MemoryMappedBoundedData bd = MemoryMappedBoundedData.create(tempFile.toPath());
-		return new BoundedBlockingSubpartition(index, parent, bd);
-
-	}
-
-	/**
-	 * Creates a BoundedBlockingSubpartition that stores the partition data in a file and
-	 * memory maps that file for reading.
-	 * Data is eagerly spilled (written to disk) and then mapped into memory. The main
-	 * difference to the {@link #createWithMemoryMappedFile(int, ResultPartition, File)} variant
-	 * is that no I/O is necessary when pages from the memory mapped file are evicted.
-	 */
-	public static BoundedBlockingSubpartition createWithFileAndMemoryMappedReader(
-			int index, ResultPartition parent, File tempFile) throws IOException {
-
-		final FileChannelMemoryMappedBoundedData bd = FileChannelMemoryMappedBoundedData.create(tempFile.toPath());
-		return new BoundedBlockingSubpartition(index, parent, bd);
 	}
 }

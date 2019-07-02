@@ -18,9 +18,11 @@
 
 package org.apache.flink.table.typeutils;
 
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.SerializerTestBase;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.table.dataformat.BinaryGeneric;
+import org.apache.flink.table.type.GenericType;
 
 /**
  * A test for the {@link BinaryArraySerializer}.
@@ -29,7 +31,7 @@ public class BinaryGenericSerializerTest extends SerializerTestBase<BinaryGeneri
 
 	@Override
 	protected BinaryGenericSerializer<String> createSerializer() {
-		return new BinaryGenericSerializer<>(StringSerializer.INSTANCE);
+		return new BinaryGenericSerializer<>(new GenericType<>(Types.STRING));
 	}
 
 	@Override

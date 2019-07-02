@@ -24,12 +24,12 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -59,24 +59,12 @@ public class BoundedBlockingSubpartitionTest extends SubpartitionTestBase {
 		partition.release();
 	}
 
-	@Test
-	public void testClosingClosesBoundedData() throws Exception {
-		final TestingBoundedDataReader reader = new TestingBoundedDataReader();
-		final BoundedBlockingSubpartitionReader bbspr = new BoundedBlockingSubpartitionReader(
-				(BoundedBlockingSubpartition) createSubpartition(), reader, 10);
-
-		bbspr.releaseAllResources();
-
-		assertTrue(reader.closed);
-	}
-
 	// ------------------------------------------------------------------------
 
 	@Override
 	ResultSubpartition createSubpartition() throws Exception {
 		final ResultPartition resultPartition = PartitionTestUtils.createPartition(ResultPartitionType.BLOCKING);
-		return BoundedBlockingSubpartition.createWithMemoryMappedFile(
-				0, resultPartition, new File(TMP_DIR.newFolder(), "subpartition"));
+		return new BoundedBlockingSubpartition(0, resultPartition, tmpPath());
 	}
 
 	@Override
@@ -86,50 +74,32 @@ public class BoundedBlockingSubpartitionTest extends SubpartitionTestBase {
 		return new BoundedBlockingSubpartition(
 				0,
 				resultPartition,
-				new FailingBoundedData());
+				FailingMemory.create());
 	}
 
 	// ------------------------------------------------------------------------
 
-	private static class FailingBoundedData implements BoundedData {
+	static Path tmpPath() throws IOException {
+		return new File(TMP_DIR.newFolder(), "subpartition").toPath();
+	}
+
+	// ------------------------------------------------------------------------
+
+	private static class FailingMemory extends MemoryMappedBuffers {
+
+		FailingMemory(Path path, FileChannel fc) throws IOException {
+			super(path, fc, Integer.MAX_VALUE);
+		}
 
 		@Override
-		public void writeBuffer(Buffer buffer) throws IOException {
+		void writeBuffer(Buffer buffer) throws IOException {
 			throw new IOException("test");
 		}
 
-		@Override
-		public void finishWrite() throws IOException {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public Reader createReader() throws IOException {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public long getSize() {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public void close() {}
-	}
-
-	private static class TestingBoundedDataReader implements BoundedData.Reader {
-
-		boolean closed;
-
-		@Nullable
-		@Override
-		public Buffer nextBuffer() throws IOException {
-			return null;
-		}
-
-		@Override
-		public void close() throws IOException {
-			closed = true;
+		static FailingMemory create() throws IOException {
+			Path p = tmpPath();
+			FileChannel fc = FileChannel.open(p, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.CREATE);
+			return new FailingMemory(p, fc);
 		}
 	}
 }

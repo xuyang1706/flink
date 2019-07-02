@@ -18,7 +18,8 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table.`type`.{RowType, TypeConverters}
 import org.apache.flink.table.api.{BatchTableEnvironment, TableConfigOptions}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.{CodeGeneratorContext, ExpandCodeGenerator}
@@ -26,14 +27,13 @@ import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.calcite.Expand
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.util.RelExplainUtil
-import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rex.RexNode
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConversions._
 
@@ -82,12 +82,13 @@ class BatchExecExpand(
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val config = tableEnv.getConfig
     val inputTransform = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
-    val inputType = inputTransform.getOutputType.asInstanceOf[BaseRowTypeInfo].toRowType
-    val outputType = FlinkTypeFactory.toLogicalRowType(getRowType)
+      .asInstanceOf[StreamTransformation[BaseRow]]
+    val inputType = TypeConverters.createInternalTypeFromTypeInfo(
+      inputTransform.getOutputType).asInstanceOf[RowType]
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
 
     val ctx = CodeGeneratorContext(config)
     val operator = ExpandCodeGenerator.generateExpandOperator(
@@ -103,8 +104,8 @@ class BatchExecExpand(
       inputTransform,
       operatorName,
       operator,
-      BaseRowTypeInfo.of(outputType),
-      getResource.getParallelism)
+      outputType.toTypeInfo,
+      config.getConf.getInteger(TableConfigOptions.SQL_RESOURCE_DEFAULT_PARALLELISM))
   }
 
 }

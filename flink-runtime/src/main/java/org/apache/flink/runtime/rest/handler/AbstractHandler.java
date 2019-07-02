@@ -51,7 +51,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -123,7 +122,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 				}
 			} else {
 				try {
-					InputStream in = new ByteBufInputStream(msgContent);
+					ByteBufInputStream in = new ByteBufInputStream(msgContent);
 					request = MAPPER.readValue(in, untypedResponseMessageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
 					throw new RestHandlerException(

@@ -24,9 +24,9 @@ import org.apache.flink.api.common.typeutils.CompositeType;
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.java.typeutils.TupleTypeInfoBase;
 import org.apache.flink.table.dataformat.BaseRow;
-import org.apache.flink.table.types.TypeInfoLogicalTypeConverter;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.RowType;
+import org.apache.flink.table.type.TypeConverters;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,31 +42,23 @@ public class BaseRowTypeInfo extends TupleTypeInfoBase<BaseRow> {
 	private static final long serialVersionUID = 1L;
 
 	private final String[] fieldNames;
-	private final LogicalType[] logicalTypes;
+	private final InternalType[] internalTypes;
 
-	public BaseRowTypeInfo(LogicalType... logicalTypes) {
-		this(logicalTypes, generateDefaultFieldNames(logicalTypes.length));
+	public BaseRowTypeInfo(InternalType... internalTypes) {
+		this(internalTypes, RowType.generateDefaultFieldNames(internalTypes.length));
 	}
 
-	public BaseRowTypeInfo(LogicalType[] logicalTypes, String[] fieldNames) {
-		super(BaseRow.class, Arrays.stream(logicalTypes)
-				.map(TypeInfoLogicalTypeConverter::fromLogicalTypeToTypeInfo)
+	public BaseRowTypeInfo(InternalType[] internalTypes, String[] fieldNames) {
+		super(BaseRow.class, Arrays.stream(internalTypes)
+				.map(TypeConverters::createExternalTypeInfoFromInternalType)
 				.toArray(TypeInformation[]::new));
-		this.logicalTypes = logicalTypes;
+		this.internalTypes = internalTypes;
 		checkNotNull(fieldNames, "FieldNames should not be null.");
-		checkArgument(logicalTypes.length == fieldNames.length,
+		checkArgument(internalTypes.length == fieldNames.length,
 				"Number of field types and names is different.");
 		checkArgument(!hasDuplicateFieldNames(fieldNames),
 				"Field names are not unique.");
 		this.fieldNames = Arrays.copyOf(fieldNames, fieldNames.length);
-	}
-
-	public static String[] generateDefaultFieldNames(int length) {
-		String[] fieldNames = new String[length];
-		for (int i = 0; i < length; i++) {
-			fieldNames[i] = "f" + i;
-		}
-		return fieldNames;
 	}
 
 	@Override
@@ -148,20 +140,11 @@ public class BaseRowTypeInfo extends TupleTypeInfoBase<BaseRow> {
 
 	@Override
 	public BaseRowSerializer createSerializer(ExecutionConfig config) {
-		return new BaseRowSerializer(config, logicalTypes);
+		return new BaseRowSerializer(config, internalTypes);
 	}
 
-	public LogicalType[] getLogicalTypes() {
-		return logicalTypes;
+	public InternalType[] getInternalTypes() {
+		return internalTypes;
 	}
 
-	public RowType toRowType() {
-		return RowType.of(logicalTypes, fieldNames);
-	}
-
-	public static BaseRowTypeInfo of(RowType rowType) {
-		return new BaseRowTypeInfo(
-				rowType.getChildren().toArray(new LogicalType[0]),
-				rowType.getFieldNames().toArray(new String[0]));
-	}
 }

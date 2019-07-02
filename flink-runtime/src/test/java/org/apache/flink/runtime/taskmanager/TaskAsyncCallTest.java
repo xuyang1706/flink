@@ -40,10 +40,10 @@ import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
-import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
-import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
+import org.apache.flink.runtime.io.network.NetworkEnvironment;
+import org.apache.flink.runtime.io.network.NetworkEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
-import org.apache.flink.runtime.taskexecutor.PartitionProducerStateChecker;
+import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.NoOpResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -106,7 +106,7 @@ public class TaskAsyncCallTest extends TestLogger {
 
 	private static final List<ClassLoader> classLoaders = Collections.synchronizedList(new ArrayList<>());
 
-	private ShuffleEnvironment<?, ?> shuffleEnvironment;
+	private NetworkEnvironment networkEnvironment;
 
 	@Before
 	public void createQueuesAndActors() {
@@ -117,15 +117,15 @@ public class TaskAsyncCallTest extends TestLogger {
 		notifyCheckpointCompleteLatch = new OneShotLatch();
 		stopLatch = new OneShotLatch();
 
-		shuffleEnvironment = new NettyShuffleEnvironmentBuilder().build();
+		networkEnvironment = new NetworkEnvironmentBuilder().build();
 
 		classLoaders.clear();
 	}
 
 	@After
-	public void teardown() throws Exception {
-		if (shuffleEnvironment != null) {
-			shuffleEnvironment.close();
+	public void teardown() {
+		if (networkEnvironment != null) {
+			networkEnvironment.shutdown();
 		}
 	}
 
@@ -255,7 +255,7 @@ public class TaskAsyncCallTest extends TestLogger {
 			0,
 			mock(MemoryManager.class),
 			mock(IOManager.class),
-			shuffleEnvironment,
+			networkEnvironment,
 			new KvStateService(new KvStateRegistry(), null, null),
 			mock(BroadcastVariableManager.class),
 			new TaskEventDispatcher(),

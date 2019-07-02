@@ -40,7 +40,7 @@ public class ProcTimeBoundedStreamJoinTest extends TimeBoundedStreamJoinTestBase
 
 	private int keyIdx = 0;
 	private BinaryRowKeySelector keySelector = new BinaryRowKeySelector(new int[] { keyIdx },
-			rowType.getLogicalTypes());
+			rowType.getInternalTypes());
 	private TypeInformation<BaseRow> keyType = new BaseRowTypeInfo();
 
 

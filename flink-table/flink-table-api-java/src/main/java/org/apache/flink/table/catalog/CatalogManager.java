@@ -24,6 +24,7 @@ import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.factories.TableFactoryUtil;
+import org.apache.flink.table.operations.CatalogTableOperation;
 import org.apache.flink.table.sinks.TableSink;
 import org.apache.flink.util.StringUtils;
 
@@ -62,57 +63,6 @@ public class CatalogManager {
 	private String currentCatalogName;
 
 	private String currentDatabaseName;
-
-	/**
-	 * Temporary solution to handle both {@link CatalogBaseTable} and
-	 * {@link ExternalCatalogTable} in a single call.
-	 */
-	public static class ResolvedTable {
-		private final ExternalCatalogTable externalCatalogTable;
-		private final CatalogBaseTable catalogTable;
-		private final TableSchema tableSchema;
-		private final List<String> tablePath;
-
-		static ResolvedTable externalTable(
-				List<String> tablePath,
-				ExternalCatalogTable table,
-				TableSchema tableSchema) {
-			return new ResolvedTable(table, null, tableSchema, tablePath);
-		}
-
-		static ResolvedTable catalogTable(
-				List<String> tablePath,
-				CatalogBaseTable table) {
-			return new ResolvedTable(null, table, table.getSchema(), tablePath);
-		}
-
-		private ResolvedTable(
-				ExternalCatalogTable externalCatalogTable,
-				CatalogBaseTable catalogTable,
-				TableSchema tableSchema,
-				List<String> tablePath) {
-			this.externalCatalogTable = externalCatalogTable;
-			this.catalogTable = catalogTable;
-			this.tableSchema = tableSchema;
-			this.tablePath = tablePath;
-		}
-
-		public Optional<ExternalCatalogTable> getExternalCatalogTable() {
-			return Optional.ofNullable(externalCatalogTable);
-		}
-
-		public Optional<CatalogBaseTable> getCatalogTable() {
-			return Optional.ofNullable(catalogTable);
-		}
-
-		public TableSchema getTableSchema() {
-			return tableSchema;
-		}
-
-		public List<String> getTablePath() {
-			return tablePath;
-		}
-	}
 
 	public CatalogManager(String defaultCatalogName, Catalog defaultCatalog) {
 		checkArgument(
@@ -293,8 +243,8 @@ public class CatalogManager {
 	}
 
 	/**
-	 * Tries to resolve a table path to a {@link ResolvedTable}. The algorithm looks for requested table
-	 * in the following paths in that order:
+	 * Tries to resolve a table path to a {@link CatalogTableOperation}. The algorithm looks for requested table
+	 * in following paths in that order:
 	 * <ol>
 	 *     <li>{@code [current-catalog].[current-database].[tablePath]}</li>
 	 *     <li>{@code [current-catalog].[tablePath]}</li>
@@ -302,10 +252,10 @@ public class CatalogManager {
 	 * </ol>
 	 *
 	 * @param tablePath table path to look for
-	 * @return {@link ResolvedTable} wrapping original table with additional information about table path and
-	 * unified access to {@link TableSchema}.
+	 * @return {@link CatalogTableOperation} containing both fully qualified table identifier and its
+	 * {@link TableSchema}.
 	 */
-	public Optional<ResolvedTable> resolveTable(String... tablePath) {
+	public Optional<CatalogTableOperation> resolveTable(String... tablePath) {
 		checkArgument(tablePath != null && tablePath.length != 0, "Table path must not be null or empty.");
 
 		List<String> userPath = asList(tablePath);
@@ -317,7 +267,7 @@ public class CatalogManager {
 		);
 
 		for (List<String> prefix : prefixes) {
-			Optional<ResolvedTable> potentialTable = lookupPath(prefix, userPath);
+			Optional<CatalogTableOperation> potentialTable = lookupPath(prefix, userPath);
 			if (potentialTable.isPresent()) {
 				return potentialTable;
 			}
@@ -326,12 +276,12 @@ public class CatalogManager {
 		return Optional.empty();
 	}
 
-	private Optional<ResolvedTable> lookupPath(List<String> prefix, List<String> userPath) {
+	private Optional<CatalogTableOperation> lookupPath(List<String> prefix, List<String> userPath) {
 		try {
 			List<String> path = new ArrayList<>(prefix);
 			path.addAll(userPath);
 
-			Optional<ResolvedTable> potentialTable = lookupCatalogTable(path);
+			Optional<CatalogTableOperation> potentialTable = lookupCatalogTable(path);
 
 			if (!potentialTable.isPresent()) {
 				potentialTable = lookupExternalTable(path);
@@ -342,7 +292,7 @@ public class CatalogManager {
 		}
 	}
 
-	private Optional<ResolvedTable> lookupCatalogTable(List<String> path) throws TableNotExistException {
+	private Optional<CatalogTableOperation> lookupCatalogTable(List<String> path) throws TableNotExistException {
 		if (path.size() == 3) {
 			Catalog currentCatalog = catalogs.get(path.get(0));
 			String currentDatabaseName = path.get(1);
@@ -350,22 +300,22 @@ public class CatalogManager {
 			ObjectPath objectPath = new ObjectPath(currentDatabaseName, tableName);
 
 			if (currentCatalog != null && currentCatalog.tableExists(objectPath)) {
-				CatalogBaseTable table = currentCatalog.getTable(objectPath);
-				return Optional.of(ResolvedTable.catalogTable(
+				TableSchema tableSchema = currentCatalog.getTable(objectPath).getSchema();
+				return Optional.of(new CatalogTableOperation(
 					asList(path.get(0), currentDatabaseName, tableName),
-					table));
+					tableSchema));
 			}
 		}
 
 		return Optional.empty();
 	}
 
-	private Optional<ResolvedTable> lookupExternalTable(List<String> path) {
+	private Optional<CatalogTableOperation> lookupExternalTable(List<String> path) {
 		ExternalCatalog currentCatalog = externalCatalogs.get(path.get(0));
 		return Optional.ofNullable(currentCatalog)
 			.flatMap(externalCatalog -> extractPath(externalCatalog, path.subList(1, path.size() - 1)))
 			.map(finalCatalog -> finalCatalog.getTable(path.get(path.size() - 1)))
-			.map(table -> ResolvedTable.externalTable(path, table, getTableSchema(table)));
+			.map(table -> new CatalogTableOperation(path, getTableSchema(table)));
 	}
 
 	private Optional<ExternalCatalog> extractPath(ExternalCatalog rootExternalCatalog, List<String> path) {
@@ -383,8 +333,8 @@ public class CatalogManager {
 		if (externalTable.isTableSource()) {
 			return TableFactoryUtil.findAndCreateTableSource(externalTable).getTableSchema();
 		} else {
-			TableSink<?> tableSink = TableFactoryUtil.findAndCreateTableSink(externalTable);
-			return tableSink.getTableSchema();
+			TableSink tableSink = TableFactoryUtil.findAndCreateTableSink(externalTable);
+			return new TableSchema(tableSink.getFieldNames(), tableSink.getFieldTypes());
 		}
 	}
 }

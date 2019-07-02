@@ -42,10 +42,8 @@ import org.apache.flink.table.runtime.window.assigners.WindowAssigner;
 import org.apache.flink.table.runtime.window.triggers.ElementTriggers;
 import org.apache.flink.table.runtime.window.triggers.EventTimeTriggers;
 import org.apache.flink.table.runtime.window.triggers.ProcessingTimeTriggers;
-import org.apache.flink.table.types.logical.BigIntType;
-import org.apache.flink.table.types.logical.IntType;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.types.logical.VarCharType;
+import org.apache.flink.table.type.InternalType;
+import org.apache.flink.table.type.InternalTypes;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 
 import org.junit.Test;
@@ -71,28 +69,28 @@ public class WindowOperatorTest {
 	// For counting if close() is called the correct number of times on the SumReducer
 	private static AtomicInteger closeCalled = new AtomicInteger(0);
 
-	private LogicalType[] inputFieldTypes = new LogicalType[]{
-			new VarCharType(VarCharType.MAX_LENGTH),
-			new IntType(),
-			new BigIntType()};
+	private InternalType[] inputFieldTypes = new InternalType[]{
+			InternalTypes.STRING,
+			InternalTypes.INT,
+			InternalTypes.LONG};
 
 	private BaseRowTypeInfo outputType = new BaseRowTypeInfo(
-			new VarCharType(VarCharType.MAX_LENGTH),
-			new BigIntType(),
-			new BigIntType(),
-			new BigIntType(),
-			new BigIntType(),
-			new BigIntType());
+			InternalTypes.STRING,
+			InternalTypes.LONG,
+			InternalTypes.LONG,
+			InternalTypes.LONG,
+			InternalTypes.LONG,
+			InternalTypes.LONG);
 
-	private LogicalType[] aggResultTypes = new LogicalType[] { new BigIntType(), new BigIntType() };
-	private LogicalType[] accTypes = new LogicalType[] { new BigIntType(), new BigIntType() };
-	private LogicalType[] windowTypes = new LogicalType[] { new BigIntType(), new BigIntType(), new BigIntType() };
+	private InternalType[] aggResultTypes = new InternalType[] { InternalTypes.LONG, InternalTypes.LONG };
+	private InternalType[] accTypes = new InternalType[] { InternalTypes.LONG, InternalTypes.LONG };
+	private InternalType[] windowTypes = new InternalType[] { InternalTypes.LONG, InternalTypes.LONG, InternalTypes.LONG };
 	private GenericRowEqualiser equaliser = new GenericRowEqualiser(accTypes, windowTypes);
 	private BinaryRowKeySelector keySelector = new BinaryRowKeySelector(new int[] { 0 }, inputFieldTypes);
 	private TypeInformation<BaseRow> keyType = keySelector.getProducedType();
 	private BaseRowHarnessAssertor assertor = new BaseRowHarnessAssertor(
 			outputType.getFieldTypes(),
-			new GenericRowRecordSortComparator(0, new VarCharType(VarCharType.MAX_LENGTH)));
+			new GenericRowRecordSortComparator(0, InternalTypes.STRING));
 
 	@Test
 	public void testEventTimeSlidingWindows() throws Exception {
@@ -710,7 +708,7 @@ public class WindowOperatorTest {
 		OneInputStreamOperatorTestHarness<BaseRow, BaseRow> testHarness = createTestHarness(operator);
 
 		BaseRowHarnessAssertor assertor = new BaseRowHarnessAssertor(
-				outputType.getFieldTypes(), new GenericRowRecordSortComparator(0, new VarCharType(VarCharType.MAX_LENGTH)));
+				outputType.getFieldTypes(), new GenericRowRecordSortComparator(0, InternalTypes.STRING));
 
 		ConcurrentLinkedQueue<Object> expectedOutput = new ConcurrentLinkedQueue<>();
 
@@ -954,7 +952,7 @@ public class WindowOperatorTest {
 	public void testTumblingCountWindow() throws Exception {
 		closeCalled.set(0);
 		final int windowSize = 3;
-		LogicalType[] windowTypes = new LogicalType[] { new BigIntType() };
+		InternalType[] windowTypes = new InternalType[] { InternalTypes.LONG };
 
 		WindowOperator operator = WindowOperatorBuilder.builder()
 				.withInputFields(inputFieldTypes)
@@ -1024,7 +1022,7 @@ public class WindowOperatorTest {
 		closeCalled.set(0);
 		final int windowSize = 5;
 		final int windowSlide = 3;
-		LogicalType[] windowTypes = new LogicalType[] { new BigIntType() };
+		InternalType[] windowTypes = new InternalType[] { InternalTypes.LONG };
 
 		WindowOperator operator = WindowOperatorBuilder.builder()
 				.withInputFields(inputFieldTypes)
@@ -1299,11 +1297,11 @@ public class WindowOperatorTest {
 
 	private static class GenericRowEqualiser implements RecordEqualiser {
 
-		private final LogicalType[] fieldTypes;
+		private final InternalType[] fieldTypes;
 
-		GenericRowEqualiser(LogicalType[] aggResultTypes, LogicalType[] windowTypes) {
+		GenericRowEqualiser(InternalType[] aggResultTypes, InternalType[] windowTypes) {
 			int size = aggResultTypes.length + windowTypes.length;
-			this.fieldTypes = new LogicalType[size];
+			this.fieldTypes = new InternalType[size];
 			for (int i = 0; i < size; i++) {
 				if (i < aggResultTypes.length) {
 					fieldTypes[i] = aggResultTypes[i];

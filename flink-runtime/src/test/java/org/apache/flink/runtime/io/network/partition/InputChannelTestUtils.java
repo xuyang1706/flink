@@ -140,8 +140,7 @@ public class InputChannelTestUtils {
 	public static ConnectionManager mockConnectionManagerWithPartitionRequestClient(PartitionRequestClient client) {
 		return new ConnectionManager() {
 			@Override
-			public int start() {
-				return -1;
+			public void start() {
 			}
 
 			@Override
@@ -155,6 +154,11 @@ public class InputChannelTestUtils {
 
 			@Override
 			public int getNumberOfActiveConnections() {
+				return 0;
+			}
+
+			@Override
+			public int getDataPort() {
 				return 0;
 			}
 

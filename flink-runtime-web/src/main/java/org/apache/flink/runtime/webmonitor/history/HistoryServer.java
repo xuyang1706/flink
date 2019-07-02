@@ -58,6 +58,7 @@ import java.nio.file.Files;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -110,7 +111,8 @@ public class HistoryServer {
 		LOG.info("Loading configuration from {}", configDir);
 		final Configuration flinkConfig = GlobalConfiguration.loadConfiguration(configDir);
 
-		FileSystem.initialize(flinkConfig, PluginUtils.createPluginManagerFromRootFolder(flinkConfig));
+		//TODO provide plugin path.
+		FileSystem.initialize(flinkConfig, PluginUtils.createPluginManagerFromRootFolder(Optional.empty()));
 
 		// run the history server
 		SecurityUtils.install(new SecurityConfiguration(flinkConfig));

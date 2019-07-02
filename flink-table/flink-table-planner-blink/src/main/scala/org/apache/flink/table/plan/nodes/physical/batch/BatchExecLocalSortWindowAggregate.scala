@@ -19,7 +19,10 @@
 package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.runtime.operators.DamBehavior
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
+import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.functions.UserDefinedFunction
 import org.apache.flink.table.plan.logical.LogicalWindow
 
@@ -88,4 +91,7 @@ class BatchExecLocalSortWindowAggregate(
   override def getDamBehavior: DamBehavior = DamBehavior.MATERIALIZING
 
   override def getOperatorName: String = "LocalSortWindowAggregateBatchExec"
+
+  override def getParallelism(input: StreamTransformation[BaseRow], conf: TableConfig): Int =
+    input.getParallelism
 }

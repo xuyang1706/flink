@@ -67,7 +67,7 @@ abstract class WindowAggregate(
     namedProperties.foreach { namedProp =>
       builder.add(
         namedProp.name,
-        typeFactory.createFieldTypeFromLogicalType(namedProp.property.resultType)
+        typeFactory.createTypeFromInternalType(namedProp.property.resultType, isNullable = true)
       )
     }
     builder.build()

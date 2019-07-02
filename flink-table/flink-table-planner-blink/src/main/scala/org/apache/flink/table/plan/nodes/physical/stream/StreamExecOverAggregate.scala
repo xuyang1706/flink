@@ -19,8 +19,9 @@ package org.apache.flink.table.plan.nodes.physical.stream
 
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.operators.KeyedProcessOperator
-import org.apache.flink.streaming.api.transformations.OneInputTransformation
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
 import org.apache.flink.table.CalcitePair
+import org.apache.flink.table.`type`.TypeConverters
 import org.apache.flink.table.api.{StreamTableEnvironment, TableConfig, TableException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.codegen.CodeGeneratorContext
@@ -31,8 +32,8 @@ import org.apache.flink.table.plan.rules.physical.stream.StreamExecRetractionRul
 import org.apache.flink.table.plan.util.AggregateUtil.transformToStreamAggregateInfoList
 import org.apache.flink.table.plan.util.{KeySelectorUtil, OverAggregateUtil, RelExplainUtil}
 import org.apache.flink.table.runtime.over._
-import org.apache.flink.table.types.LogicalTypeDataTypeConverter
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
+
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
 import org.apache.calcite.rel.RelFieldCollation.Direction.ASCENDING
 import org.apache.calcite.rel.`type`.RelDataType
@@ -42,9 +43,8 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
 import org.apache.calcite.rex.RexLiteral
 import org.apache.calcite.tools.RelBuilder
-import java.util
 
-import org.apache.flink.api.dag.Transformation
+import java.util
 
 import scala.collection.JavaConverters._
 
@@ -144,7 +144,7 @@ class StreamExecOverAggregate(
   }
 
   override protected def translateToPlanInternal(
-      tableEnv: StreamTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
     val tableConfig = tableEnv.getConfig
 
     if (logicWindow.groups.size > 1) {
@@ -168,7 +168,7 @@ class StreamExecOverAggregate(
     }
 
     val inputDS = getInputNodes.get(0).translateToPlan(tableEnv)
-      .asInstanceOf[Transformation[BaseRow]]
+      .asInstanceOf[StreamTransformation[BaseRow]]
 
     val inputIsAccRetract = StreamExecRetractionRules.isAccRetract(input)
 
@@ -208,16 +208,16 @@ class StreamExecOverAggregate(
     val aggregateCalls = logicWindow.groups.get(0).getAggregateCalls(logicWindow).asScala
     val isRowsClause = overWindow.isRows
     val constants = logicWindow.constants.asScala
-    val constantTypes = constants.map(c => FlinkTypeFactory.toLogicalType(c.getType))
+    val constantTypes = constants.map(c => FlinkTypeFactory.toInternalType(c.getType))
 
     val fieldNames = inputRowType.getFieldNames.asScala
     val fieldTypes = inputRowType.getFieldList.asScala
-      .map(c => FlinkTypeFactory.toLogicalType(c.getType))
+      .map(c => FlinkTypeFactory.toInternalType(c.getType))
 
-    val inRowType = FlinkTypeFactory.toLogicalRowType(inputRel.getRowType)
-    val outRowType = FlinkTypeFactory.toLogicalRowType(outputRowType)
+    val inRowType = FlinkTypeFactory.toInternalRowType(inputRel.getRowType)
+    val outRowType = FlinkTypeFactory.toInternalRowType(outputRowType)
 
-    val aggInputType = tableEnv.getTypeFactory.buildRelNodeRowType(
+    val aggInputType = tableEnv.getTypeFactory.buildRelDataType(
       fieldNames ++ constants.indices.map(i => "TMP" + i),
       fieldTypes ++ constantTypes)
 
@@ -268,11 +268,11 @@ class StreamExecOverAggregate(
     }
 
     val partitionKeys: Array[Int] = overWindow.keys.toArray
-    val inputTypeInfo = BaseRowTypeInfo.of(inRowType)
+    val inputTypeInfo = inRowType.toTypeInfo
 
     val selector = KeySelectorUtil.getBaseRowSelector(partitionKeys, inputTypeInfo)
 
-    val returnTypeInfo = BaseRowTypeInfo.of(outRowType)
+    val returnTypeInfo = outRowType.toTypeInfo
       .asInstanceOf[BaseRowTypeInfo]
     // partitioned aggregation
 
@@ -283,10 +283,11 @@ class StreamExecOverAggregate(
       "OverAggregate",
       operator,
       returnTypeInfo,
-      getResource.getParallelism)
+      inputDS.getParallelism)
 
-    if (getResource.getMaxParallelism > 0) {
-      ret.setMaxParallelism(getResource.getMaxParallelism)
+    if (partitionKeys.isEmpty) {
+      ret.setParallelism(1)
+      ret.setMaxParallelism(1)
     }
 
     // set KeyType and Selector for state
@@ -326,7 +327,7 @@ class StreamExecOverAggregate(
       isStateBackendDataViews = true)
 
     val fieldTypes = inputRowType.getFieldList.asScala.
-      map(c => FlinkTypeFactory.toLogicalType(c.getType)).toArray
+      map(c => FlinkTypeFactory.toInternalType(c.getType)).toArray
 
     val generator = new AggsHandlerCodeGenerator(
       ctx,
@@ -341,7 +342,7 @@ class StreamExecOverAggregate(
       .generateAggsHandler("UnboundedOverAggregateHelper", aggInfoList)
 
     val flattenAccTypes = aggInfoList.getAccTypes.map(
-      LogicalTypeDataTypeConverter.fromDataTypeToLogicalType)
+      TypeConverters.createInternalTypeFromTypeInfo)
 
     if (rowTimeIdx.isDefined) {
       if (isRowsClause) {
@@ -405,7 +406,7 @@ class StreamExecOverAggregate(
       isStateBackendDataViews = true)
 
     val fieldTypes = inputRowType.getFieldList.asScala.
-      map(c => FlinkTypeFactory.toLogicalType(c.getType)).toArray
+      map(c => FlinkTypeFactory.toInternalType(c.getType)).toArray
 
     val generator = new AggsHandlerCodeGenerator(
       ctx,
@@ -422,7 +423,7 @@ class StreamExecOverAggregate(
       .generateAggsHandler("BoundedOverAggregateHelper", aggInfoList)
 
     val flattenAccTypes = aggInfoList.getAccTypes.map(
-      LogicalTypeDataTypeConverter.fromDataTypeToLogicalType)
+      TypeConverters.createInternalTypeFromTypeInfo)
 
     if (rowTimeIdx.isDefined) {
       if (isRowsClause) {

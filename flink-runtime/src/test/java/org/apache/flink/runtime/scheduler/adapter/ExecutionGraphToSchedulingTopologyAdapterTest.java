@@ -27,7 +27,6 @@ import org.apache.flink.runtime.executiongraph.TestRestartStrategy;
 import org.apache.flink.runtime.executiongraph.utils.SimpleAckingTaskManagerGateway;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingResultPartition;
@@ -54,7 +53,6 @@ import static org.apache.flink.runtime.io.network.partition.ResultPartitionType.
 import static org.apache.flink.runtime.jobgraph.DistributionPattern.ALL_TO_ALL;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.fail;
 
 /**
  * Unit tests for {@link ExecutionGraphToSchedulingTopologyAdapter}.
@@ -102,26 +100,6 @@ public class ExecutionGraphToSchedulingTopologyAdapterTest extends TestLogger {
 
 				assertPartitionEquals(partition, schedulingResultPartition);
 			}
-		}
-	}
-
-	@Test
-	public void testGetVertexOrThrow() {
-		try {
-			adapter.getVertexOrThrow(new ExecutionVertexID(new JobVertexID(), 0));
-			fail("get not exist vertex");
-		} catch (IllegalArgumentException exception) {
-			// expected
-		}
-	}
-
-	@Test
-	public void testResultPartitionOrThrow() {
-		try {
-			adapter.getResultPartitionOrThrow(new IntermediateResultPartitionID());
-			fail("get not exist result partition");
-		} catch (IllegalArgumentException exception) {
-			// expected
 		}
 	}
 
@@ -205,6 +183,5 @@ public class ExecutionGraphToSchedulingTopologyAdapterTest extends TestLogger {
 		assertEquals(
 			new ExecutionVertexID(originalVertex.getJobvertexId(), originalVertex.getParallelSubtaskIndex()),
 			adaptedVertex.getId());
-		assertEquals(originalVertex.getInputDependencyConstraint(), adaptedVertex.getInputDependencyConstraint());
 	}
 }

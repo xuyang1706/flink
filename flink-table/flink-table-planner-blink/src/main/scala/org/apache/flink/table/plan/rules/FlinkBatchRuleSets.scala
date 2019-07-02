@@ -54,7 +54,7 @@ object FlinkBatchRuleSets {
     * can create new plan nodes.
     */
   val EXPAND_PLAN_RULES: RuleSet = RuleSets.ofList(
-    LogicalCorrelateToJoinFromTemporalTableRule.INSTANCE,
+    LogicalCorrelateToTemporalTableJoinRule.INSTANCE,
     TableScanRule.INSTANCE)
 
   val POST_EXPAND_CLEAN_UP_RULES: RuleSet = RuleSets.ofList(
@@ -119,9 +119,7 @@ object FlinkBatchRuleSets {
         new CoerceInputsRule(classOf[LogicalMinus], false),
         ConvertToNotInOrInRule.INSTANCE,
         // optimize limit 0
-        FlinkLimit0RemoveRule.INSTANCE,
-        // unnest rule
-        LogicalUnnestRule.INSTANCE
+        FlinkLimit0RemoveRule.INSTANCE
       )).asJava)
 
   /**
@@ -155,14 +153,6 @@ object FlinkBatchRuleSets {
       // reduce expressions in filters and joins
       ++ REDUCE_EXPRESSION_RULES.asScala
     ).asJava
-  )
-
-  /**
-    * RuleSet to do push predicate into table scan
-    */
-  val FILTER_TABLESCAN_PUSHDOWN_RULES: RuleSet = RuleSets.ofList(
-    // push a filter down into the table scan
-    PushFilterIntoTableSourceScanRule.INSTANCE
   )
 
   /**
@@ -223,14 +213,11 @@ object FlinkBatchRuleSets {
     * This RuleSet is a sub-set of [[LOGICAL_OPT_RULES]].
     */
   private val LOGICAL_RULES: RuleSet = RuleSets.ofList(
-    // scan optimization
-    PushProjectIntoTableSourceScanRule.INSTANCE,
-    PushFilterIntoTableSourceScanRule.INSTANCE,
-
+    // aggregation and projection rules
+    AggregateProjectMergeRule.INSTANCE,
+    AggregateProjectPullUpConstantsRule.INSTANCE,
     // reorder sort and projection
     SortProjectTransposeRule.INSTANCE,
-    // remove unnecessary sort rule
-    SortRemoveRule.INSTANCE,
 
     // join rules
     FlinkJoinPushExpressionsRule.INSTANCE,
@@ -240,12 +227,8 @@ object FlinkBatchRuleSets {
     // convert non-all union into all-union + distinct
     UnionToDistinctRule.INSTANCE,
 
-    // aggregation and projection rules
-    AggregateProjectMergeRule.INSTANCE,
-    AggregateProjectPullUpConstantsRule.INSTANCE,
-
     // remove aggregation if it does not aggregate and input is already distinct
-    FlinkAggregateRemoveRule.INSTANCE,
+    AggregateRemoveRule.INSTANCE,
     // push aggregate through join
     FlinkAggregateJoinTransposeRule.EXTENDED,
     // aggregate union rule
@@ -257,14 +240,11 @@ object FlinkBatchRuleSets {
     AggregateReduceFunctionsRule.INSTANCE,
     WindowAggregateReduceFunctionsRule.INSTANCE,
 
-    // reduce group by columns
-    AggregateReduceGroupingRule.INSTANCE,
-    // reduce useless aggCall
-    PruneAggregateCallRule.PROJECT_ON_AGGREGATE,
-    PruneAggregateCallRule.CALC_ON_AGGREGATE,
-
     // expand grouping sets
     DecomposeGroupingSetsRule.INSTANCE,
+
+    // remove unnecessary sort rule
+    SortRemoveRule.INSTANCE,
 
     // rank rules
     FlinkLogicalRankRule.CONSTANT_RANGE_INSTANCE,

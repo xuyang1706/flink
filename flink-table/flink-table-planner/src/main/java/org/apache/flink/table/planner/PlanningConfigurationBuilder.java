@@ -19,8 +19,6 @@
 package org.apache.flink.table.planner;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.sql.parser.impl.FlinkSqlParserImpl;
-import org.apache.flink.sql.parser.validate.FlinkSqlConformance;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.calcite.CalciteConfig;
 import org.apache.flink.table.calcite.FlinkPlannerImpl;
@@ -29,15 +27,14 @@ import org.apache.flink.table.calcite.FlinkRelBuilderFactory;
 import org.apache.flink.table.calcite.FlinkRelOptClusterFactory;
 import org.apache.flink.table.calcite.FlinkTypeFactory;
 import org.apache.flink.table.calcite.FlinkTypeSystem;
-import org.apache.flink.table.catalog.BasicOperatorTable;
 import org.apache.flink.table.catalog.CatalogReader;
-import org.apache.flink.table.catalog.FunctionCatalog;
-import org.apache.flink.table.catalog.FunctionCatalogOperatorTable;
 import org.apache.flink.table.codegen.ExpressionReducer;
 import org.apache.flink.table.expressions.ExpressionBridge;
 import org.apache.flink.table.expressions.PlannerExpression;
+import org.apache.flink.table.plan.TableOperationConverter;
 import org.apache.flink.table.plan.cost.DataSetCostFactory;
 import org.apache.flink.table.util.JavaScalaConversionUtil;
+import org.apache.flink.table.validate.FunctionCatalog;
 
 import org.apache.calcite.config.Lex;
 import org.apache.calcite.jdbc.CalciteSchema;
@@ -87,9 +84,10 @@ public class PlanningConfigurationBuilder {
 		this.tableConfig = tableConfig;
 		this.functionCatalog = functionCatalog;
 
-		// the converter is needed when calling temporal table functions from SQL, because
-		// they reference a history table represented with a tree of table operations
-		this.context = Contexts.of(expressionBridge);
+		// create context instances with Flink type factory
+		this.context = Contexts.of(
+			new TableOperationConverter.ToRelConverterSupplier(expressionBridge)
+		);
 
 		this.planner = new VolcanoPlanner(costFactory, context);
 		planner.setExecutor(new ExpressionReducer(tableConfig));
@@ -154,8 +152,6 @@ public class PlanningConfigurationBuilder {
 			// and cases are preserved
 			SqlParser
 				.configBuilder()
-				.setParserFactory(FlinkSqlParserImpl.FACTORY)
-				.setConformance(FlinkSqlConformance.DEFAULT)
 				.setLex(Lex.JAVA)
 				.build());
 	}
@@ -197,6 +193,9 @@ public class PlanningConfigurationBuilder {
 				getSqlToRelConverterConfig(
 					calciteConfig(tableConfig),
 					expressionBridge))
+			// the converter is needed when calling temporal table functions from SQL, because
+			// they reference a history table represented with a tree of table operations
+			.context(context)
 			// set the executor to evaluate constant expressions
 			.executor(new ExpressionReducer(tableConfig))
 			.build();
@@ -228,18 +227,13 @@ public class PlanningConfigurationBuilder {
 	 * Returns the operator table for this environment including a custom Calcite configuration.
 	 */
 	private SqlOperatorTable getSqlOperatorTable(CalciteConfig calciteConfig, FunctionCatalog functionCatalog) {
-		SqlOperatorTable baseOperatorTable = ChainedSqlOperatorTable.of(
-			new BasicOperatorTable(),
-			new FunctionCatalogOperatorTable(functionCatalog, typeFactory)
-		);
-
 		return JavaScalaConversionUtil.toJava(calciteConfig.sqlOperatorTable()).map(operatorTable -> {
 				if (calciteConfig.replacesSqlOperatorTable()) {
 					return operatorTable;
 				} else {
-					return ChainedSqlOperatorTable.of(baseOperatorTable, operatorTable);
+					return ChainedSqlOperatorTable.of(functionCatalog.getSqlOperatorTable(), operatorTable);
 				}
 			}
-		).orElse(baseOperatorTable);
+		).orElseGet(functionCatalog::getSqlOperatorTable);
 	}
 }

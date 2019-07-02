@@ -21,7 +21,6 @@ package org.apache.flink.streaming.api.transformations;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -40,9 +39,9 @@ import java.util.List;
  * @param <T> The type of the elements in the input {@code SinkTransformation}
  */
 @Internal
-public class SinkTransformation<T> extends PhysicalTransformation<Object> {
+public class SinkTransformation<T> extends StreamTransformation<Object> {
 
-	private final Transformation<T> input;
+	private final StreamTransformation<T> input;
 
 	private final StreamOperatorFactory<Object> operatorFactory;
 
@@ -52,15 +51,15 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 	private TypeInformation<?> stateKeyType;
 
 	/**
-	 * Creates a new {@code SinkTransformation} from the given input {@code Transformation}.
+	 * Creates a new {@code SinkTransformation} from the given input {@code StreamTransformation}.
 	 *
-	 * @param input The input {@code Transformation}
-	 * @param name The name of the {@code Transformation}, this will be shown in Visualizations and the Log
+	 * @param input The input {@code StreamTransformation}
+	 * @param name The name of the {@code StreamTransformation}, this will be shown in Visualizations and the Log
 	 * @param operator The sink operator
 	 * @param parallelism The parallelism of this {@code SinkTransformation}
 	 */
 	public SinkTransformation(
-			Transformation<T> input,
+			StreamTransformation<T> input,
 			String name,
 			StreamSink<T> operator,
 			int parallelism) {
@@ -68,7 +67,7 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 	}
 
 	public SinkTransformation(
-			Transformation<T> input,
+			StreamTransformation<T> input,
 			String name,
 			StreamOperatorFactory<Object> operatorFactory,
 			int parallelism) {
@@ -78,9 +77,9 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 	}
 
 	/**
-	 * Returns the input {@code Transformation} of this {@code SinkTransformation}.
+	 * Returns the input {@code StreamTransformation} of this {@code SinkTransformation}.
 	 */
-	public Transformation<T> getInput() {
+	public StreamTransformation<T> getInput() {
 		return input;
 	}
 
@@ -124,8 +123,8 @@ public class SinkTransformation<T> extends PhysicalTransformation<Object> {
 	}
 
 	@Override
-	public Collection<Transformation<?>> getTransitivePredecessors() {
-		List<Transformation<?>> result = Lists.newArrayList();
+	public Collection<StreamTransformation<?>> getTransitivePredecessors() {
+		List<StreamTransformation<?>> result = Lists.newArrayList();
 		result.add(this);
 		result.addAll(input.getTransitivePredecessors());
 		return result;

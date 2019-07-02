@@ -23,14 +23,12 @@ import pickle
 import sys
 import unittest
 
-from pyflink.java_gateway import get_gateway
 from pyflink.table.types import (_infer_schema_from_data, _infer_type,
                                  _array_signed_int_typecode_ctype_mappings,
                                  _array_unsigned_int_typecode_ctype_mappings,
                                  _array_type_mappings, _merge_type,
                                  _create_type_verifier, UserDefinedType, DataTypes, Row, RowField,
-                                 RowType, ArrayType, BigIntType, VarCharType, MapType, DataType,
-                                 _to_java_type, _from_java_type, ZonedTimestampType)
+                                 RowType, ArrayType, BigIntType, VarCharType, MapType)
 
 
 class ExamplePointUDT(UserDefinedType):
@@ -105,21 +103,6 @@ class PythonOnlyPoint(ExamplePoint):
     __UDT__ = PythonOnlyUDT()
 
 
-class UTCOffsetTimezone(datetime.tzinfo):
-    """
-    Specifies timezone in UTC offset
-    """
-
-    def __init__(self, offset=0):
-        self.OFFSET = datetime.timedelta(hours=offset)
-
-    def utcoffset(self, dt):
-        return self.OFFSET
-
-    def dst(self, dt):
-        return self.OFFSET
-
-
 class TypesTests(unittest.TestCase):
 
     def test_infer_schema(self):
@@ -160,7 +143,7 @@ class TypesTests(unittest.TestCase):
             'VarCharType(2147483647, true)',
             'DateType(true)',
             'TimeType(0, true)',
-            'LocalZonedTimestampType(6, true)',
+            'TimestampType(0, 6, true)',
             'DoubleType(true)',
             "ArrayType(DoubleType(false), true)",
             "ArrayType(BigIntType(true), true)",
@@ -257,46 +240,46 @@ class TypesTests(unittest.TestCase):
         self.assertEqual(expected_schema, _infer_type(p))
 
     def test_struct_type(self):
-        row1 = DataTypes.ROW().add("f1", DataTypes.STRING(nullable=True)) \
-            .add("f2", DataTypes.STRING(nullable=True))
-        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.STRING(nullable=True)),
-                              DataTypes.FIELD("f2", DataTypes.STRING(nullable=True), None)])
+        row1 = DataTypes.ROW().add("f1", DataTypes.VARCHAR(nullable=True)) \
+            .add("f2", DataTypes.VARCHAR(nullable=True))
+        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True)),
+                              DataTypes.FIELD("f2", DataTypes.VARCHAR(nullable=True), None)])
         self.assertEqual(row1.field_names(), row2.names)
         self.assertEqual(row1, row2)
 
-        row1 = DataTypes.ROW().add("f1", DataTypes.STRING(nullable=True)) \
-            .add("f2", DataTypes.STRING(nullable=True))
-        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.STRING(nullable=True))])
+        row1 = DataTypes.ROW().add("f1", DataTypes.VARCHAR(nullable=True)) \
+            .add("f2", DataTypes.VARCHAR(nullable=True))
+        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True))])
         self.assertNotEqual(row1.field_names(), row2.names)
         self.assertNotEqual(row1, row2)
 
-        row1 = (DataTypes.ROW().add(DataTypes.FIELD("f1", DataTypes.STRING(nullable=True)))
-                .add("f2", DataTypes.STRING(nullable=True)))
-        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.STRING(nullable=True)),
-                              DataTypes.FIELD("f2", DataTypes.STRING(nullable=True))])
+        row1 = (DataTypes.ROW().add(DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True)))
+                .add("f2", DataTypes.VARCHAR(nullable=True)))
+        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True)),
+                              DataTypes.FIELD("f2", DataTypes.VARCHAR(nullable=True))])
         self.assertEqual(row1.field_names(), row2.names)
         self.assertEqual(row1, row2)
 
-        row1 = (DataTypes.ROW().add(DataTypes.FIELD("f1", DataTypes.STRING(nullable=True)))
-                .add("f2", DataTypes.STRING(nullable=True)))
-        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.STRING(nullable=True))])
+        row1 = (DataTypes.ROW().add(DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True)))
+                .add("f2", DataTypes.VARCHAR(nullable=True)))
+        row2 = DataTypes.ROW([DataTypes.FIELD("f1", DataTypes.VARCHAR(nullable=True))])
         self.assertNotEqual(row1.field_names(), row2.names)
         self.assertNotEqual(row1, row2)
 
         # Catch exception raised during improper construction
         self.assertRaises(ValueError, lambda: DataTypes.ROW().add("name"))
 
-        row1 = DataTypes.ROW().add("f1", DataTypes.STRING(nullable=True)) \
-            .add("f2", DataTypes.STRING(nullable=True))
+        row1 = DataTypes.ROW().add("f1", DataTypes.VARCHAR(nullable=True)) \
+            .add("f2", DataTypes.VARCHAR(nullable=True))
         for field in row1:
             self.assertIsInstance(field, RowField)
 
-        row1 = DataTypes.ROW().add("f1", DataTypes.STRING(nullable=True)) \
-            .add("f2", DataTypes.STRING(nullable=True))
+        row1 = DataTypes.ROW().add("f1", DataTypes.VARCHAR(nullable=True)) \
+            .add("f2", DataTypes.VARCHAR(nullable=True))
         self.assertEqual(len(row1), 2)
 
-        row1 = DataTypes.ROW().add("f1", DataTypes.STRING(nullable=True)) \
-            .add("f2", DataTypes.STRING(nullable=True))
+        row1 = DataTypes.ROW().add("f1", DataTypes.VARCHAR(nullable=True)) \
+            .add("f2", DataTypes.VARCHAR(nullable=True))
         self.assertIs(row1["f1"], row1.fields[0])
         self.assertIs(row1[0], row1.fields[0])
         self.assertEqual(row1[0:1], DataTypes.ROW(row1.fields[0:1]))
@@ -330,31 +313,31 @@ class TypesTests(unittest.TestCase):
             _merge_type(DataTypes.ARRAY(DataTypes.BIGINT()), DataTypes.ARRAY(DataTypes.DOUBLE()))
 
         self.assertEqual(_merge_type(
-            DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT()),
-            DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())
-        ), DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT()))
+            DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT()),
+            DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())
+        ), DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT()))
         with self.assertRaises(TypeError):
             _merge_type(
-                DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT()),
+                DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT()),
                 DataTypes.MAP(DataTypes.DOUBLE(), DataTypes.BIGINT()))
         with self.assertRaises(TypeError):
             _merge_type(
-                DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT()),
-                DataTypes.MAP(DataTypes.STRING(), DataTypes.DOUBLE()))
+                DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT()),
+                DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.DOUBLE()))
 
         self.assertEqual(_merge_type(
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.BIGINT()),
-                           DataTypes.FIELD('f2', DataTypes.STRING())]),
+                           DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.BIGINT()),
-                           DataTypes.FIELD('f2', DataTypes.STRING())])
+                           DataTypes.FIELD('f2', DataTypes.VARCHAR())])
         ), DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.BIGINT()),
-                          DataTypes.FIELD('f2', DataTypes.STRING())]))
+                          DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
         with self.assertRaises(TypeError):
             _merge_type(
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.BIGINT()),
-                               DataTypes.FIELD('f2', DataTypes.STRING())]),
+                               DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.DOUBLE()),
-                               DataTypes.FIELD('f2', DataTypes.STRING())]))
+                               DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
 
         self.assertEqual(_merge_type(
             DataTypes.ROW([DataTypes.FIELD(
@@ -368,54 +351,54 @@ class TypesTests(unittest.TestCase):
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ROW(
                     [DataTypes.FIELD('f2', DataTypes.BIGINT())]))]),
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ROW(
-                    [DataTypes.FIELD('f2', DataTypes.STRING())]))]))
+                    [DataTypes.FIELD('f2', DataTypes.VARCHAR())]))]))
 
         self.assertEqual(_merge_type(
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(DataTypes.BIGINT())),
-                           DataTypes.FIELD('f2', DataTypes.STRING())]),
+                           DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(DataTypes.BIGINT())),
-                           DataTypes.FIELD('f2', DataTypes.STRING())])
+                           DataTypes.FIELD('f2', DataTypes.VARCHAR())])
         ), DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(DataTypes.BIGINT())),
-                          DataTypes.FIELD('f2', DataTypes.STRING())]))
+                          DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
         with self.assertRaises(TypeError):
             _merge_type(
                 DataTypes.ROW([
                     DataTypes.FIELD('f1', DataTypes.ARRAY(DataTypes.BIGINT())),
-                    DataTypes.FIELD('f2', DataTypes.STRING())]),
+                    DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
                 DataTypes.ROW([
                     DataTypes.FIELD('f1', DataTypes.ARRAY(DataTypes.DOUBLE())),
-                    DataTypes.FIELD('f2', DataTypes.STRING())]))
+                    DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
 
         self.assertEqual(_merge_type(
             DataTypes.ROW([
-                DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())),
-                DataTypes.FIELD('f2', DataTypes.STRING())]),
+                DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())),
+                DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
             DataTypes.ROW([
-                DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())),
-                DataTypes.FIELD('f2', DataTypes.STRING())])
+                DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())),
+                DataTypes.FIELD('f2', DataTypes.VARCHAR())])
         ), DataTypes.ROW([
-            DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())),
-            DataTypes.FIELD('f2', DataTypes.STRING())]))
+            DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())),
+            DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
         with self.assertRaises(TypeError):
             _merge_type(
                 DataTypes.ROW([
-                    DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())),
-                    DataTypes.FIELD('f2', DataTypes.STRING())]),
+                    DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())),
+                    DataTypes.FIELD('f2', DataTypes.VARCHAR())]),
                 DataTypes.ROW([
-                    DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.STRING(), DataTypes.DOUBLE())),
-                    DataTypes.FIELD('f2', DataTypes.STRING())]))
+                    DataTypes.FIELD('f1', DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.DOUBLE())),
+                    DataTypes.FIELD('f2', DataTypes.VARCHAR())]))
 
         self.assertEqual(_merge_type(
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(
-                DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())))]),
+                DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())))]),
             DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(
-                DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())))])
+                DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())))])
         ), DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(
-            DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())))]))
+            DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())))]))
         with self.assertRaises(TypeError):
             _merge_type(
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(
-                    DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())))]),
+                    DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.BIGINT())))]),
                 DataTypes.ROW([DataTypes.FIELD('f1', DataTypes.ARRAY(
                     DataTypes.MAP(DataTypes.DOUBLE(), DataTypes.BIGINT())))])
             )
@@ -525,10 +508,12 @@ class TypesTests(unittest.TestCase):
         self.assertEqual(lt, lt2)
 
     def test_decimal_type(self):
-        t1 = DataTypes.DECIMAL(10, 0)
+        t1 = DataTypes.DECIMAL()
         t2 = DataTypes.DECIMAL(10, 2)
         self.assertTrue(t2 is not t1)
         self.assertNotEqual(t1, t2)
+        t3 = DataTypes.DECIMAL(8)
+        self.assertNotEqual(t2, t3)
 
     def test_datetype_equal_zero(self):
         dt = DataTypes.DATE()
@@ -538,31 +523,6 @@ class TypesTests(unittest.TestCase):
         tst = DataTypes.TIMESTAMP()
         self.assertEqual(tst.to_sql_type(datetime.datetime.max) % 1000000, 999999)
 
-    def test_local_zoned_timestamp_type(self):
-        lztst = DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE()
-        ts = datetime.datetime(1970, 1, 1, 0, 0, 0, 0000, tzinfo=UTCOffsetTimezone(1))
-        self.assertEqual(-3600000000, lztst.to_sql_type(ts))
-
-        if sys.version_info >= (3, 6):
-            ts2 = lztst.from_sql_type(-3600000000)
-            self.assertEqual(ts.astimezone(), ts2.astimezone())
-
-    def test_zoned_timestamp_type(self):
-        ztst = ZonedTimestampType()
-        ts = datetime.datetime(1970, 1, 1, 0, 0, 0, 0000, tzinfo=UTCOffsetTimezone(1))
-        self.assertEqual((0, 3600), ztst.to_sql_type(ts))
-
-        ts2 = ztst.from_sql_type((0, 3600))
-        self.assertEqual(ts, ts2)
-
-    def test_day_time_inteval_type(self):
-        ymt = DataTypes.INTERVAL(DataTypes.DAY(), DataTypes.SECOND())
-        td = datetime.timedelta(days=1, seconds=10)
-        self.assertEqual(86410000000, ymt.to_sql_type(td))
-
-        td2 = ymt.from_sql_type(86410000000)
-        self.assertEqual(td, td2)
-
     def test_empty_row(self):
         row = Row()
         self.assertEqual(len(row), 0)
@@ -571,20 +531,6 @@ class TypesTests(unittest.TestCase):
         row_class = Row("c1", "c2")
         self.assertRaises(ValueError, lambda: row_class(1, 2, 3))
 
-    def test_nullable(self):
-        t = DataType(nullable=False)
-
-        self.assertEqual(t._nullable, False)
-        t_nullable = t.nullable()
-        self.assertEqual(t_nullable._nullable, True)
-
-    def test_not_null(self):
-        t = DataType(nullable=True)
-
-        self.assertEqual(t._nullable, True)
-        t_notnull = t.not_null()
-        self.assertEqual(t_notnull._nullable, False)
-
 
 class DataTypeVerificationTests(unittest.TestCase):
 
@@ -592,7 +538,7 @@ class DataTypeVerificationTests(unittest.TestCase):
         self.assertRaises(
             ValueError,
             lambda: _create_type_verifier(
-                DataTypes.STRING(nullable=False), name="test_name")(None))
+                DataTypes.VARCHAR(nullable=False), name="test_name")(None))
 
         schema = DataTypes.ROW(
             [DataTypes.FIELD('a', DataTypes.ROW([DataTypes.FIELD('b', DataTypes.INT())]))])
@@ -602,7 +548,7 @@ class DataTypeVerificationTests(unittest.TestCase):
 
     def test_verify_type_ok_nullable(self):
         obj = None
-        types = [DataTypes.INT(), DataTypes.FLOAT(), DataTypes.STRING(), DataTypes.ROW([])]
+        types = [DataTypes.INT(), DataTypes.FLOAT(), DataTypes.VARCHAR(), DataTypes.ROW([])]
         for data_type in types:
             try:
                 _create_type_verifier(data_type)(obj)
@@ -615,7 +561,7 @@ class DataTypeVerificationTests(unittest.TestCase):
         import decimal
 
         schema = DataTypes.ROW([
-            DataTypes.FIELD('s', DataTypes.STRING(nullable=False)),
+            DataTypes.FIELD('s', DataTypes.VARCHAR(nullable=False)),
             DataTypes.FIELD('i', DataTypes.INT(True))])
 
         class MyObj:
@@ -626,8 +572,8 @@ class DataTypeVerificationTests(unittest.TestCase):
         # obj, data_type
         success_spec = [
             # String
-            ("", DataTypes.STRING()),
-            (u"", DataTypes.STRING()),
+            ("", DataTypes.VARCHAR()),
+            (u"", DataTypes.VARCHAR()),
 
             # UDT
             (ExamplePoint(1.0, 2.0), ExamplePointUDT()),
@@ -655,10 +601,10 @@ class DataTypeVerificationTests(unittest.TestCase):
             (1.0, DataTypes.DOUBLE()),
 
             # Decimal
-            (decimal.Decimal("1.0"), DataTypes.DECIMAL(10, 0)),
+            (decimal.Decimal("1.0"), DataTypes.DECIMAL()),
 
             # Binary
-            (bytearray([1]), DataTypes.BINARY(1)),
+            (bytearray([1]), DataTypes.BINARY()),
 
             # Date/Time/Timestamp
             (datetime.date(2000, 1, 2), DataTypes.DATE()),
@@ -668,15 +614,15 @@ class DataTypeVerificationTests(unittest.TestCase):
 
             # Array
             ([], DataTypes.ARRAY(DataTypes.INT())),
-            (["1", None], DataTypes.ARRAY(DataTypes.STRING(nullable=True))),
+            (["1", None], DataTypes.ARRAY(DataTypes.VARCHAR(nullable=True))),
             ([1, 2], DataTypes.ARRAY(DataTypes.INT())),
             ((1, 2), DataTypes.ARRAY(DataTypes.INT())),
             (array.array('h', [1, 2]), DataTypes.ARRAY(DataTypes.INT())),
 
             # Map
-            ({}, DataTypes.MAP(DataTypes.STRING(), DataTypes.INT())),
-            ({"a": 1}, DataTypes.MAP(DataTypes.STRING(), DataTypes.INT())),
-            ({"a": None}, DataTypes.MAP(DataTypes.STRING(nullable=False), DataTypes.INT(True))),
+            ({}, DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.INT())),
+            ({"a": 1}, DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.INT())),
+            ({"a": None}, DataTypes.MAP(DataTypes.VARCHAR(nullable=False), DataTypes.INT(True))),
 
             # Struct
             ({"s": "a", "i": 1}, schema),
@@ -697,13 +643,13 @@ class DataTypeVerificationTests(unittest.TestCase):
         # obj, data_type, exception class
         failure_spec = [
             # Char/VarChar (match anything but None)
-            (None, DataTypes.VARCHAR(1), ValueError),
-            (None, DataTypes.CHAR(1), ValueError),
+            (None, DataTypes.VARCHAR(), ValueError),
+            (None, DataTypes.CHAR(), ValueError),
 
             # VarChar (length exceeds maximum length)
-            ("abc", DataTypes.VARCHAR(1), ValueError),
+            ("abc", DataTypes.VARCHAR(), ValueError),
             # Char (length exceeds length)
-            ("abc", DataTypes.CHAR(1), ValueError),
+            ("abc", DataTypes.CHAR(), ValueError),
 
             # UDT
             (ExamplePoint(1.0, 2.0), PythonOnlyUDT(), ValueError),
@@ -732,16 +678,16 @@ class DataTypeVerificationTests(unittest.TestCase):
             (1, DataTypes.DOUBLE(), TypeError),
 
             # Decimal
-            (1.0, DataTypes.DECIMAL(10, 0), TypeError),
-            (1, DataTypes.DECIMAL(10, 0), TypeError),
-            ("1.0", DataTypes.DECIMAL(10, 0), TypeError),
+            (1.0, DataTypes.DECIMAL(), TypeError),
+            (1, DataTypes.DECIMAL(), TypeError),
+            ("1.0", DataTypes.DECIMAL(), TypeError),
 
             # Binary
-            (1, DataTypes.BINARY(1), TypeError),
+            (1, DataTypes.BINARY(), TypeError),
             # VarBinary (length exceeds maximum length)
-            (bytearray([1, 2]), DataTypes.VARBINARY(1), ValueError),
+            (bytearray([1, 2]), DataTypes.VARBINARY(), ValueError),
             # Char (length exceeds length)
-            (bytearray([1, 2]), DataTypes.BINARY(1), ValueError),
+            (bytearray([1, 2]), DataTypes.BINARY(), ValueError),
 
             # Date/Time/Timestamp
             ("2000-01-02", DataTypes.DATE(), TypeError),
@@ -749,13 +695,13 @@ class DataTypeVerificationTests(unittest.TestCase):
             (946811040, DataTypes.TIMESTAMP(), TypeError),
 
             # Array
-            (["1", None], DataTypes.ARRAY(DataTypes.VARCHAR(1, nullable=False)), ValueError),
+            (["1", None], DataTypes.ARRAY(DataTypes.VARCHAR(nullable=False)), ValueError),
             ([1, "2"], DataTypes.ARRAY(DataTypes.INT()), TypeError),
 
             # Map
             ({"a": 1}, DataTypes.MAP(DataTypes.INT(), DataTypes.INT()), TypeError),
-            ({"a": "1"}, DataTypes.MAP(DataTypes.VARCHAR(1), DataTypes.INT()), TypeError),
-            ({"a": None}, DataTypes.MAP(DataTypes.VARCHAR(1), DataTypes.INT(False)), ValueError),
+            ({"a": "1"}, DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.INT()), TypeError),
+            ({"a": None}, DataTypes.MAP(DataTypes.VARCHAR(), DataTypes.INT(False)), ValueError),
 
             # Struct
             ({"s": "a", "i": "1"}, schema, TypeError),
@@ -779,104 +725,6 @@ class DataTypeVerificationTests(unittest.TestCase):
             msg = "verify_type(%s, %s, nullable=False) == %s" % (obj, data_type, exp)
             with self.assertRaises(exp, msg=msg):
                 _create_type_verifier(data_type.not_null())(obj)
-
-
-class DataTypeConvertTests(unittest.TestCase):
-
-    def test_basic_type(self):
-        test_types = [DataTypes.STRING(),
-                      DataTypes.BOOLEAN(),
-                      DataTypes.BYTES(),
-                      DataTypes.TINYINT(),
-                      DataTypes.SMALLINT(),
-                      DataTypes.INT(),
-                      DataTypes.BIGINT(),
-                      DataTypes.FLOAT(),
-                      DataTypes.DOUBLE(),
-                      DataTypes.DATE(),
-                      DataTypes.TIME(),
-                      DataTypes.TIMESTAMP()]
-
-        java_types = [_to_java_type(item) for item in test_types]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        self.assertEqual(test_types, converted_python_types)
-
-    def test_atomic_type_with_data_type_with_parameters(self):
-        gateway = get_gateway()
-        JDataTypes = gateway.jvm.DataTypes
-        java_types = [JDataTypes.TIME(3).notNull(),
-                      JDataTypes.TIMESTAMP().notNull(),
-                      JDataTypes.VARBINARY(100).notNull(),
-                      JDataTypes.BINARY(2).notNull(),
-                      JDataTypes.VARCHAR(30).notNull(),
-                      JDataTypes.CHAR(50).notNull(),
-                      JDataTypes.DECIMAL(20, 10).notNull()]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        expected = [DataTypes.TIME(3, False),
-                    DataTypes.TIMESTAMP().not_null(),
-                    DataTypes.VARBINARY(100, False),
-                    DataTypes.BINARY(2, False),
-                    DataTypes.VARCHAR(30, False),
-                    DataTypes.CHAR(50, False),
-                    DataTypes.DECIMAL(20, 10, False)]
-        self.assertEqual(converted_python_types, expected)
-
-    def test_array_type(self):
-        test_types = [DataTypes.ARRAY(DataTypes.BIGINT()),
-                      # array type with not null basic data type means primitive array
-                      DataTypes.ARRAY(DataTypes.BIGINT().not_null()),
-                      DataTypes.ARRAY(DataTypes.STRING()),
-                      DataTypes.ARRAY(DataTypes.ARRAY(DataTypes.BIGINT())),
-                      DataTypes.ARRAY(DataTypes.ARRAY(DataTypes.STRING()))]
-
-        java_types = [_to_java_type(item) for item in test_types]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        self.assertEqual(test_types, converted_python_types)
-
-    def test_multiset_type(self):
-        test_types = [DataTypes.MULTISET(DataTypes.BIGINT()),
-                      DataTypes.MULTISET(DataTypes.STRING()),
-                      DataTypes.MULTISET(DataTypes.MULTISET(DataTypes.BIGINT())),
-                      DataTypes.MULTISET(DataTypes.MULTISET(DataTypes.STRING()))]
-
-        java_types = [_to_java_type(item) for item in test_types]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        self.assertEqual(test_types, converted_python_types)
-
-    def test_map_type(self):
-        test_types = [DataTypes.MAP(DataTypes.BIGINT(), DataTypes.BIGINT()),
-                      DataTypes.MAP(DataTypes.STRING(), DataTypes.STRING()),
-                      DataTypes.MAP(DataTypes.STRING(),
-                                    DataTypes.MAP(DataTypes.STRING(), DataTypes.BIGINT())),
-                      DataTypes.MAP(DataTypes.STRING(),
-                                    DataTypes.MAP(DataTypes.STRING(), DataTypes.STRING()))]
-
-        java_types = [_to_java_type(item) for item in test_types]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        self.assertEqual(test_types, converted_python_types)
-
-    def test_row_type(self):
-        test_types = [DataTypes.ROW([DataTypes.FIELD("a", DataTypes.INT()),
-                                     DataTypes.FIELD("b",
-                                                     DataTypes.ROW(
-                                                         [DataTypes.FIELD("c",
-                                                                          DataTypes.STRING())]))])]
-
-        java_types = [_to_java_type(item) for item in test_types]
-
-        converted_python_types = [_from_java_type(item) for item in java_types]
-
-        self.assertEqual(test_types, converted_python_types)
 
 
 if __name__ == "__main__":

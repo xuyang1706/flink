@@ -68,16 +68,6 @@ class FlinkRelMdColumnNullCount private extends MetadataHandler[ColumnNullCount]
   }
 
   /**
-    * Gets the null count of the given column on Snapshot.
-    *
-    * @param snapshot    Snapshot RelNode
-    * @param mq    RelMetadataQuery instance
-    * @param index the index of the given column
-    * @return the null count of the given column on Snapshot.
-    */
-  def getColumnNullCount(snapshot: Snapshot, mq: RelMetadataQuery, index: Int): JDouble = null
-
-  /**
     * Gets the null count of the given column in Project.
     *
     * @param project Project RelNode

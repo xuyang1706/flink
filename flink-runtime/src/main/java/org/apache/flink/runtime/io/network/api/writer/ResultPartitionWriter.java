@@ -18,8 +18,8 @@
 
 package org.apache.flink.runtime.io.network.api.writer;
 
-import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 
 import javax.annotation.Nullable;
@@ -28,11 +28,6 @@ import java.io.IOException;
 
 /**
  * A buffer-oriented runtime result writer API for producing results.
- *
- * <p>If {@link ResultPartitionWriter#close()} is called before {@link ResultPartitionWriter#fail(Throwable)} or
- * {@link ResultPartitionWriter#finish()}, it abruptly triggers failure and cancellation of production.
- * In this case {@link ResultPartitionWriter#fail(Throwable)} still needs to be called afterwards to fully release
- * all resources associated the the partition and propagate failure cause to the consumer if possible.
  */
 public interface ResultPartitionWriter extends AutoCloseable {
 
@@ -41,6 +36,8 @@ public interface ResultPartitionWriter extends AutoCloseable {
 	 */
 	void setup() throws IOException;
 
+	BufferProvider getBufferProvider();
+
 	ResultPartitionID getPartitionId();
 
 	int getNumberOfSubpartitions();
@@ -48,22 +45,18 @@ public interface ResultPartitionWriter extends AutoCloseable {
 	int getNumTargetKeyGroups();
 
 	/**
-	 * Requests a {@link BufferBuilder} from this partition for writing data.
-	 */
-	BufferBuilder getBufferBuilder() throws IOException, InterruptedException;
-
-	/**
 	 * Adds the bufferConsumer to the subpartition with the given index.
+	 *
+	 * <p>For PIPELINED {@link org.apache.flink.runtime.io.network.partition.ResultPartitionType}s,
+	 * this will trigger the deployment of consuming tasks after the first buffer has been added.
 	 *
 	 * <p>This method takes the ownership of the passed {@code bufferConsumer} and thus is responsible for releasing
 	 * it's resources.
 	 *
 	 * <p>To avoid problems with data re-ordering, before adding new {@link BufferConsumer} the previously added one
 	 * the given {@code subpartitionIndex} must be marked as {@link BufferConsumer#isFinished()}.
-	 *
-	 * @return true if operation succeeded and bufferConsumer was enqueued for consumption.
 	 */
-	boolean addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException;
+	void addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException;
 
 	/**
 	 * Manually trigger consumption from enqueued {@link BufferConsumer BufferConsumers} in all subpartitions.
@@ -78,9 +71,8 @@ public interface ResultPartitionWriter extends AutoCloseable {
 	/**
 	 * Fail the production of the partition.
 	 *
-	 * <p>This method propagates non-{@code null} failure causes to consumers on a best-effort basis. This call also
-	 * leads to the release of all resources associated with the partition. Closing of the partition is still needed
-	 * afterwards if it has not been done before.
+	 * <p>This method propagates non-{@code null} failure causes to consumers on a best-effort basis.
+	 * Closing of partition is still needed.
 	 *
 	 * @param throwable failure cause
 	 */
@@ -89,7 +81,7 @@ public interface ResultPartitionWriter extends AutoCloseable {
 	/**
 	 * Successfully finish the production of the partition.
 	 *
-	 * <p>Closing of partition is still needed afterwards.
+	 * <p>Closing of partition is still needed.
 	 */
 	void finish() throws IOException;
 }

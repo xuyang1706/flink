@@ -27,17 +27,10 @@ import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAn
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -45,31 +38,10 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests that read the BoundedBlockingSubpartition with multiple threads in parallel.
  */
-@RunWith(Parameterized.class)
 public class BoundedBlockingSubpartitionWriteReadTest {
 
 	@ClassRule
 	public static final TemporaryFolder TMP_FOLDER = new TemporaryFolder();
-
-	private static final int BUFFER_SIZE = 1024 * 1024;
-
-	// ------------------------------------------------------------------------
-	//  parameters
-	// ------------------------------------------------------------------------
-
-	@Parameters(name = "type = {0}")
-	public static Collection<Object[]> modes() {
-		return Arrays.stream(BoundedBlockingSubpartitionType.values())
-				.map((type) -> new Object[] { type })
-				.collect(Collectors.toList());
-	}
-
-	@Parameter
-	public BoundedBlockingSubpartitionType type;
-
-	// ------------------------------------------------------------------------
-	//  tests
-	// ------------------------------------------------------------------------
 
 	@Test
 	public void testWriteAndReadData() throws Exception {
@@ -146,7 +118,6 @@ public class BoundedBlockingSubpartitionWriteReadTest {
 				assertEquals(expectedNextLong++, buffer.getLong());
 			}
 
-			next.buffer().recycleBuffer();
 			nextExpectedBacklog--;
 		}
 
@@ -159,7 +130,7 @@ public class BoundedBlockingSubpartitionWriteReadTest {
 	// ------------------------------------------------------------------------
 
 	private static void writeLongs(BoundedBlockingSubpartition partition, long nums) throws IOException {
-		final MemorySegment memory = MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE);
+		final MemorySegment memory = MemorySegmentFactory.allocateUnpooledSegment(1024 * 1024);
 
 		long l = 0;
 		while (nums > 0) {
@@ -178,19 +149,18 @@ public class BoundedBlockingSubpartitionWriteReadTest {
 		}
 	}
 
-	private BoundedBlockingSubpartition createAndFillPartition(long numLongs) throws IOException {
+	private static BoundedBlockingSubpartition createAndFillPartition(long numLongs) throws IOException {
 		BoundedBlockingSubpartition subpartition = createSubpartition();
 		writeLongs(subpartition, numLongs);
 		subpartition.finish();
 		return subpartition;
 	}
 
-	private BoundedBlockingSubpartition createSubpartition() throws IOException {
-		return type.create(
+	private static BoundedBlockingSubpartition createSubpartition() throws IOException {
+		return new BoundedBlockingSubpartition(
 				0,
 				PartitionTestUtils.createPartition(ResultPartitionType.BLOCKING),
-				new File(TMP_FOLDER.newFolder(), "partitiondata"),
-				BUFFER_SIZE);
+				new File(TMP_FOLDER.newFolder(), "partitiondata").toPath());
 	}
 
 	private static LongReader[] createSubpartitionLongReaders(

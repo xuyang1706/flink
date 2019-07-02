@@ -32,7 +32,6 @@ import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobmaster.TestingLogicalSlot;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -154,18 +153,12 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
 
 		executionGraph.start(TestingComponentMainThreadExecutorServiceAdapter.forMainThread());
 
-		CheckpointCoordinatorConfiguration chkConfig = new CheckpointCoordinatorConfiguration(
-			100,
-			100,
-			100,
-			1,
-			CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
-			true,
-			false,
-			0);
-
 		executionGraph.enableCheckpointing(
-				chkConfig,
+				100,
+				100,
+				100,
+				1,
+				CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 				Collections.emptyList(),
 				Collections.emptyList(),
 				Collections.emptyList(),
@@ -173,7 +166,8 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
 				counter,
 				store,
 				new MemoryStateBackend(),
-				CheckpointStatsTrackerTest.createTestTracker());
+				CheckpointStatsTrackerTest.createTestTracker(),
+				false);
 
 		JobVertex jobVertex = new JobVertex("MockVertex");
 		jobVertex.setInvokableClass(AbstractInvokable.class);
@@ -201,11 +195,6 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
 
 		@Override
 		public long getAndIncrement() {
-			throw new UnsupportedOperationException("Not implemented.");
-		}
-
-		@Override
-		public long get() {
 			throw new UnsupportedOperationException("Not implemented.");
 		}
 

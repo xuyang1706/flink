@@ -55,11 +55,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
-import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 /**
@@ -200,9 +198,7 @@ public class ResourceManagerTest extends TestLogger {
 				assertThat(registrationFuture.get(), instanceOf(RegistrationResponse.Success.class));
 			},
 			resourceManagerResourceId -> {
-				// might have been completed or not depending whether the timeout was triggered first
-				final ResourceID optionalHeartbeatRequestOrigin = heartbeatRequestFuture.getNow(null);
-				assertThat(optionalHeartbeatRequestOrigin, anyOf(is(resourceManagerResourceId), is(nullValue())));
+				assertThat(heartbeatRequestFuture.get(), is(equalTo(resourceManagerResourceId)));
 				assertThat(disconnectFuture.get(), is(equalTo(resourceManagerId)));
 			});
 	}
@@ -223,9 +219,7 @@ public class ResourceManagerTest extends TestLogger {
 				registerTaskExecutor(resourceManagerGateway, taskExecutorId, taskExecutorGateway.getAddress());
 			},
 			resourceManagerResourceId -> {
-				// might have been completed or not depending whether the timeout was triggered first
-				final ResourceID optionalHeartbeatRequestOrigin = heartbeatRequestFuture.getNow(null);
-				assertThat(optionalHeartbeatRequestOrigin, anyOf(is(resourceManagerResourceId), is(nullValue())));
+				assertThat(heartbeatRequestFuture.get(), is(equalTo(resourceManagerResourceId)));
 				assertThat(disconnectFuture.get(), instanceOf(TimeoutException.class));
 			}
 		);

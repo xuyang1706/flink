@@ -58,7 +58,7 @@ public class FsStateBackendEntropyTest {
 		final String checkpointDirStr = checkpointDir.toString();
 
 		FsCheckpointStorage storage = new FsCheckpointStorage(
-				fs, checkpointDir, null, new JobID(), 1024, 4096);
+				fs, checkpointDir, null, new JobID(), 1024);
 
 		FsCheckpointStorageLocation location = (FsCheckpointStorageLocation)
 				storage.initializeLocationForCheckpoint(96562);

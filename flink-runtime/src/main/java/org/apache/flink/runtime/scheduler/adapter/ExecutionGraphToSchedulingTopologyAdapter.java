@@ -109,8 +109,7 @@ public class ExecutionGraphToSchedulingTopologyAdapter implements SchedulingTopo
 		DefaultSchedulingExecutionVertex schedulingVertex = new DefaultSchedulingExecutionVertex(
 			new ExecutionVertexID(vertex.getJobvertexId(), vertex.getParallelSubtaskIndex()),
 			producedPartitions,
-			new ExecutionStateSupplier(vertex),
-			vertex.getInputDependencyConstraint());
+			new ExecutionStateSupplier(vertex));
 
 		producedPartitions.forEach(partition -> partition.setProducer(schedulingVertex));
 

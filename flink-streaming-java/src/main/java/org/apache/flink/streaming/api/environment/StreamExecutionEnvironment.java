@@ -32,10 +32,8 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.java.Utils;
 import org.apache.flink.api.java.io.TextInputFormat;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
@@ -74,6 +72,7 @@ import org.apache.flink.streaming.api.functions.source.StatefulSequenceSource;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
 import org.apache.flink.streaming.api.operators.StreamSource;
+import org.apache.flink.streaming.api.transformations.StreamTransformation;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SplittableIterator;
 import org.apache.flink.util.StringUtils;
@@ -116,10 +115,7 @@ public abstract class StreamExecutionEnvironment {
 	/**
 	 * The environment of the context (local by default, cluster if invoked through command line).
 	 */
-	private static StreamExecutionEnvironmentFactory contextEnvironmentFactory = null;
-
-	/** The ThreadLocal used to store {@link StreamExecutionEnvironmentFactory}. */
-	private static final ThreadLocal<StreamExecutionEnvironmentFactory> threadLocalContextEnvironmentFactory = new ThreadLocal<>();
+	private static StreamExecutionEnvironmentFactory contextEnvironmentFactory;
 
 	/** The default parallelism used when creating a local environment. */
 	private static int defaultLocalParallelism = Runtime.getRuntime().availableProcessors();
@@ -132,7 +128,7 @@ public abstract class StreamExecutionEnvironment {
 	/** Settings that control the checkpointing behavior. */
 	private final CheckpointConfig checkpointCfg = new CheckpointConfig();
 
-	protected final List<Transformation<?>> transformations = new ArrayList<>();
+	protected final List<StreamTransformation<?>> transformations = new ArrayList<>();
 
 	private long bufferTimeout = DEFAULT_NETWORK_BUFFER_TIMEOUT;
 
@@ -1511,30 +1507,10 @@ public abstract class StreamExecutionEnvironment {
 	 */
 	@Internal
 	public StreamGraph getStreamGraph() {
-		return getStreamGraphGenerator().generate();
-	}
-
-	/**
-	 * Getter of the {@link org.apache.flink.streaming.api.graph.StreamGraph} of the streaming job.
-	 *
-	 * @param jobName Desired name of the job
-	 * @return The streamgraph representing the transformations
-	 */
-	@Internal
-	public StreamGraph getStreamGraph(String jobName) {
-		return getStreamGraphGenerator().setJobName(jobName).generate();
-	}
-
-	private StreamGraphGenerator getStreamGraphGenerator() {
 		if (transformations.size() <= 0) {
 			throw new IllegalStateException("No operators defined in streaming topology. Cannot execute.");
 		}
-		return new StreamGraphGenerator(transformations, config, checkpointCfg)
-			.setStateBackend(defaultStateBackend)
-			.setChaining(isChainingEnabled)
-			.setUserArtifacts(cacheFile)
-			.setTimeCharacteristic(timeCharacteristic)
-			.setDefaultBufferTimeout(bufferTimeout);
+		return StreamGraphGenerator.generate(this, transformations);
 	}
 
 	/**
@@ -1556,7 +1532,7 @@ public abstract class StreamExecutionEnvironment {
 	@Internal
 	public <F> F clean(F f) {
 		if (getConfig().isClosureCleanerEnabled()) {
-			ClosureCleaner.clean(f, getConfig().getClosureCleanerLevel(), true);
+			ClosureCleaner.clean(f, true);
 		}
 		ClosureCleaner.ensureSerializable(f);
 		return f;
@@ -1573,7 +1549,7 @@ public abstract class StreamExecutionEnvironment {
 	 * this method.
 	 */
 	@Internal
-	public void addOperator(Transformation<?> transformation) {
+	public void addOperator(StreamTransformation<?> transformation) {
 		Preconditions.checkNotNull(transformation, "transformation must not be null.");
 		this.transformations.add(transformation);
 	}
@@ -1592,12 +1568,10 @@ public abstract class StreamExecutionEnvironment {
 	 * executed.
 	 */
 	public static StreamExecutionEnvironment getExecutionEnvironment() {
-		return Utils.resolveFactory(threadLocalContextEnvironmentFactory, contextEnvironmentFactory)
-			.map(StreamExecutionEnvironmentFactory::createExecutionEnvironment)
-			.orElseGet(StreamExecutionEnvironment::createStreamExecutionEnvironment);
-	}
+		if (contextEnvironmentFactory != null) {
+			return contextEnvironmentFactory.createExecutionEnvironment();
+		}
 
-	private static StreamExecutionEnvironment createStreamExecutionEnvironment() {
 		// because the streaming project depends on "flink-clients" (and not the other way around)
 		// we currently need to intercept the data set environment and create a dependent stream env.
 		// this should be fixed once we rework the project dependencies
@@ -1792,12 +1766,10 @@ public abstract class StreamExecutionEnvironment {
 
 	protected static void initializeContextEnvironment(StreamExecutionEnvironmentFactory ctx) {
 		contextEnvironmentFactory = ctx;
-		threadLocalContextEnvironmentFactory.set(contextEnvironmentFactory);
 	}
 
 	protected static void resetContextEnvironment() {
 		contextEnvironmentFactory = null;
-		threadLocalContextEnvironmentFactory.remove();
 	}
 
 	/**

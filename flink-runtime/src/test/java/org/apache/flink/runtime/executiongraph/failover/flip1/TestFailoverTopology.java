@@ -50,9 +50,6 @@ public class TestFailoverTopology implements FailoverTopology {
 		return containsCoLocationConstraints;
 	}
 
-	/**
-	 * A FailoverVertex implementation for tests.
-	 */
 	public static class TestFailoverVertex implements FailoverVertex {
 
 		private final Collection<FailoverEdge> inputEdges = new ArrayList<>();
@@ -93,9 +90,6 @@ public class TestFailoverTopology implements FailoverTopology {
 		}
 	}
 
-	/**
-	 * A FailoverEdge implementation for tests.
-	 */
 	public static class TestFailoverEdge implements FailoverEdge {
 
 		private final IntermediateResultPartitionID resultPartitionID;
@@ -131,9 +125,6 @@ public class TestFailoverTopology implements FailoverTopology {
 		}
 	}
 
-	/**
-	 * Builder for {@link TestFailoverTopology}.
-	 */
 	public static class Builder {
 		private boolean containsCoLocationConstraints = false;
 		private Collection<FailoverVertex> vertices = new ArrayList<>();

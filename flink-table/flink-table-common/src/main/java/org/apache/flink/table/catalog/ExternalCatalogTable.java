@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.catalog;
 
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.descriptors.DescriptorProperties;
 import org.apache.flink.table.descriptors.TableDescriptor;
 import org.apache.flink.table.factories.TableFactory;
@@ -38,10 +39,8 @@ import static org.apache.flink.table.descriptors.StatisticsValidator.readColumnS
  * <p>See also {@link TableFactory} for more information about how to target suitable factories.
  *
  * <p>Use {@code ExternalCatalogTableBuilder} to integrate with the normalized descriptor-based API.
- *
- * @deprecated use {@link CatalogTable} instead.
  */
-@Deprecated
+@PublicEvolving
 public class ExternalCatalogTable extends TableDescriptor {
 
 	/**

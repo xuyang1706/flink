@@ -56,10 +56,9 @@ public class NettyConnectionManager implements ConnectionManager {
 	}
 
 	@Override
-	public int start() throws IOException {
+	public void start() throws IOException {
 		client.init(nettyProtocol, bufferPool);
-
-		return server.init(nettyProtocol, bufferPool);
+		server.init(nettyProtocol, bufferPool);
 	}
 
 	@Override
@@ -76,6 +75,15 @@ public class NettyConnectionManager implements ConnectionManager {
 	@Override
 	public int getNumberOfActiveConnections() {
 		return partitionRequestClientFactory.getNumberOfActiveClients();
+	}
+
+	@Override
+	public int getDataPort() {
+		if (server != null && server.getLocalAddress() != null) {
+			return server.getLocalAddress().getPort();
+		} else {
+			return -1;
+		}
 	}
 
 	@Override

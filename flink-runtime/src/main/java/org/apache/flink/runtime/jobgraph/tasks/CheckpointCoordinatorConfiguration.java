@@ -42,8 +42,6 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 
 	private final int maxConcurrentCheckpoints;
 
-	private final int tolerableCheckpointFailureNumber;
-
 	/** Settings for what to do with checkpoints when a job finishes. */
 	private final CheckpointRetentionPolicy checkpointRetentionPolicy;
 
@@ -65,13 +63,11 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 			int maxConcurrentCheckpoints,
 			CheckpointRetentionPolicy checkpointRetentionPolicy,
 			boolean isExactlyOnce,
-			boolean isPreferCheckpointForRecovery,
-			int tolerableCpFailureNumber) {
+			boolean isPerfetCheckpointForRecovery) {
 
 		// sanity checks
-		if (checkpointInterval < 10 || checkpointTimeout < 10 ||
-			minPauseBetweenCheckpoints < 0 || maxConcurrentCheckpoints < 1 ||
-			tolerableCpFailureNumber < 0) {
+		if (checkpointInterval < 1 || checkpointTimeout < 1 ||
+			minPauseBetweenCheckpoints < 0 || maxConcurrentCheckpoints < 1) {
 			throw new IllegalArgumentException();
 		}
 
@@ -81,8 +77,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 		this.maxConcurrentCheckpoints = maxConcurrentCheckpoints;
 		this.checkpointRetentionPolicy = Preconditions.checkNotNull(checkpointRetentionPolicy);
 		this.isExactlyOnce = isExactlyOnce;
-		this.isPreferCheckpointForRecovery = isPreferCheckpointForRecovery;
-		this.tolerableCheckpointFailureNumber = tolerableCpFailureNumber;
+		this.isPreferCheckpointForRecovery = isPerfetCheckpointForRecovery;
 	}
 
 	public long getCheckpointInterval() {
@@ -113,10 +108,6 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 		return isPreferCheckpointForRecovery;
 	}
 
-	public int getTolerableCheckpointFailureNumber() {
-		return tolerableCheckpointFailureNumber;
-	}
-
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {
@@ -132,8 +123,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 			maxConcurrentCheckpoints == that.maxConcurrentCheckpoints &&
 			isExactlyOnce == that.isExactlyOnce &&
 			checkpointRetentionPolicy == that.checkpointRetentionPolicy &&
-			isPreferCheckpointForRecovery == that.isPreferCheckpointForRecovery &&
-			tolerableCheckpointFailureNumber == that.tolerableCheckpointFailureNumber;
+			isPreferCheckpointForRecovery == that.isPreferCheckpointForRecovery;
 	}
 
 	@Override
@@ -145,8 +135,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 				maxConcurrentCheckpoints,
 				checkpointRetentionPolicy,
 				isExactlyOnce,
-				isPreferCheckpointForRecovery,
-				tolerableCheckpointFailureNumber);
+				isPreferCheckpointForRecovery);
 	}
 
 	@Override
@@ -157,7 +146,6 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 			", minPauseBetweenCheckpoints=" + minPauseBetweenCheckpoints +
 			", maxConcurrentCheckpoints=" + maxConcurrentCheckpoints +
 			", checkpointRetentionPolicy=" + checkpointRetentionPolicy +
-			", tolerableCheckpointFailureNumber=" + tolerableCheckpointFailureNumber +
 			'}';
 	}
 }

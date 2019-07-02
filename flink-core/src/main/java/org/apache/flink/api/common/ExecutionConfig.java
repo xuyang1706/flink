@@ -90,7 +90,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	/** Defines how data exchange happens - batch or pipelined */
 	private ExecutionMode executionMode = ExecutionMode.PIPELINED;
 
-	private ClosureCleanerLevel closureCleanerLevel = ClosureCleanerLevel.RECURSIVE;
+	private boolean useClosureCleaner = true;
 
 	private int parallelism = PARALLELISM_DEFAULT;
 
@@ -154,10 +154,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	/** This flag defines if we use compression for the state snapshot data or not. Default: false */
 	private boolean useSnapshotCompression = false;
 
-	/**
-	 * @deprecated Should no longer be used because we would not support to let task directly fail on checkpoint error.
-	 */
-	@Deprecated
+	/** Determines if a task fails or not if there is an error in writing its checkpoint data. Default: true */
 	private boolean failTaskOnCheckpointError = true;
 
 	/** The default input dependency constraint to schedule tasks. */
@@ -191,7 +188,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	 * User code must be serializable because it needs to be sent to worker nodes.
 	 */
 	public ExecutionConfig enableClosureCleaner() {
-		this.closureCleanerLevel = ClosureCleanerLevel.RECURSIVE;
+		useClosureCleaner = true;
 		return this;
 	}
 
@@ -201,7 +198,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	 * @see #enableClosureCleaner()
 	 */
 	public ExecutionConfig disableClosureCleaner() {
-		this.closureCleanerLevel = ClosureCleanerLevel.NONE;
+		useClosureCleaner = false;
 		return this;
 	}
 
@@ -211,23 +208,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	 * @see #enableClosureCleaner()
 	 */
 	public boolean isClosureCleanerEnabled() {
-		return !(closureCleanerLevel == ClosureCleanerLevel.NONE);
-	}
-
-	/**
-	 * Configures the closure cleaner. Please see {@link ClosureCleanerLevel} for details on the
-	 * different settings.
-	 */
-	public ExecutionConfig setClosureCleanerLevel(ClosureCleanerLevel level) {
-		this.closureCleanerLevel = level;
-		return this;
-	}
-
-	/**
-	 * Returns the configured {@link ClosureCleanerLevel}.
-	 */
-	public ClosureCleanerLevel getClosureCleanerLevel() {
-		return closureCleanerLevel;
+		return useClosureCleaner;
 	}
 
 	/**
@@ -951,22 +932,20 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	}
 
 	/**
-	 * @deprecated This method takes no effect since we would not forward the configuration from the checkpoint config
-	 * to the task, and we have not supported task to fail on checkpoint error.
-	 * Please use CheckpointConfig.getTolerableCheckpointFailureNumber() to know the behavior on checkpoint errors.
+	 * This method is visible because of the way the configuration is currently forwarded from the checkpoint config to
+	 * the task. This should not be called by the user, please use CheckpointConfig.isFailTaskOnCheckpointError()
+	 * instead.
 	 */
-	@Deprecated
 	@Internal
 	public boolean isFailTaskOnCheckpointError() {
 		return failTaskOnCheckpointError;
 	}
 
 	/**
-	 * @deprecated This method takes no effect since we would not forward the configuration from the checkpoint config
-	 * to the task, and we have not supported task to fail on checkpoint error.
-	 * Please use CheckpointConfig.setTolerableCheckpointFailureNumber(int) to determine the behavior on checkpoint errors.
+	 * This method is visible because of the way the configuration is currently forwarded from the checkpoint config to
+	 * the task. This should not be called by the user, please use CheckpointConfig.setFailOnCheckpointingErrors(...)
+	 * instead.
 	 */
-	@Deprecated
 	@Internal
 	public void setFailTaskOnCheckpointError(boolean failTaskOnCheckpointError) {
 		this.failTaskOnCheckpointError = failTaskOnCheckpointError;
@@ -979,7 +958,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 			return other.canEqual(this) &&
 				Objects.equals(executionMode, other.executionMode) &&
-				closureCleanerLevel == other.closureCleanerLevel &&
+				useClosureCleaner == other.useClosureCleaner &&
 				parallelism == other.parallelism &&
 				((restartStrategyConfiguration == null && other.restartStrategyConfiguration == null) ||
 					(null != restartStrategyConfiguration && restartStrategyConfiguration.equals(other.restartStrategyConfiguration))) &&
@@ -1009,7 +988,7 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	public int hashCode() {
 		return Objects.hash(
 			executionMode,
-				closureCleanerLevel,
+			useClosureCleaner,
 			parallelism,
 			restartStrategyConfiguration,
 			forceKryo,
@@ -1075,25 +1054,5 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 		public Map<String, String> toMap() {
 			return Collections.emptyMap();
 		}
-	}
-
-	/**
-	 * Configuration settings for the closure cleaner.
-	 */
-	public enum ClosureCleanerLevel {
-		/**
-		 * Disable the closure cleaner completely.
-		 */
-		NONE,
-
-		/**
-		 * Clean only the top-level class without recursing into fields.
-		 */
-		TOP_LEVEL,
-
-		/**
-		 * Clean all the fields recursively.
-		 */
-		RECURSIVE
 	}
 }

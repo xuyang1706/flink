@@ -91,8 +91,4 @@ public abstract class GeneratedClass<T> implements Serializable {
 	public Object[] getReferences() {
 		return references;
 	}
-
-	public Class<?> getClass(ClassLoader classLoader) {
-		return compile(classLoader);
-	}
 }

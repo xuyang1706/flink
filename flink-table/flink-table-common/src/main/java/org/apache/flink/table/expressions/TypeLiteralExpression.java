@@ -34,7 +34,7 @@ import java.util.Objects;
  * subexpressions.
  */
 @PublicEvolving
-public final class TypeLiteralExpression implements ResolvedExpression {
+public final class TypeLiteralExpression implements Expression {
 
 	private final DataType dataType;
 
@@ -42,19 +42,8 @@ public final class TypeLiteralExpression implements ResolvedExpression {
 		this.dataType = Preconditions.checkNotNull(dataType, "Data type must not be null.");
 	}
 
-	@Override
-	public DataType getOutputDataType() {
+	public DataType getDataType() {
 		return dataType;
-	}
-
-	@Override
-	public List<ResolvedExpression> getResolvedChildren() {
-		return Collections.emptyList();
-	}
-
-	@Override
-	public String asSummaryString() {
-		return dataType.toString();
 	}
 
 	@Override
@@ -64,7 +53,7 @@ public final class TypeLiteralExpression implements ResolvedExpression {
 
 	@Override
 	public <R> R accept(ExpressionVisitor<R> visitor) {
-		return visitor.visit(this);
+		return visitor.visitTypeLiteral(this);
 	}
 
 	@Override
@@ -86,6 +75,6 @@ public final class TypeLiteralExpression implements ResolvedExpression {
 
 	@Override
 	public String toString() {
-		return asSummaryString();
+		return dataType.toString();
 	}
 }

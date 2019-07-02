@@ -21,12 +21,14 @@ package org.apache.flink.table.sources.tsextractors
 import java.util
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.table.`type`.DecimalType
 import org.apache.flink.table.api.{Types, ValidationException}
 import org.apache.flink.table.descriptors.Rowtime
-import org.apache.flink.table.expressions.ApiExpressionUtils.{unresolvedCall, typeLiteral, valueLiteral}
 import org.apache.flink.table.expressions._
-import org.apache.flink.table.functions.BuiltInFunctionDefinitions
 import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
+import org.apache.flink.table.typeutils.DecimalTypeInfo
+
+import scala.collection.JavaConversions._
 
 /**
   * Converts an existing [[Long]], [[java.sql.Timestamp]], or
@@ -64,31 +66,32 @@ final class ExistingField(val field: String) extends TimestampExtractor {
 
     val fieldReferenceExpr = new FieldReferenceExpression(
       fieldAccess.name,
-      fromLegacyInfoToDataType(fieldAccess.resultType),
+      fieldAccess.resultType,
       0,
       fieldAccess.fieldIndex)
 
     fieldAccess.resultType match {
       case Types.LONG =>
         // access LONG field
-        val innerDiv = unresolvedCall(
+        val innerDiv = new CallExpression(
           BuiltInFunctionDefinitions.DIVIDE,
-          fieldReferenceExpr,
-          valueLiteral(new java.math.BigDecimal(1000)))
-
-        unresolvedCall(
+          List(fieldReferenceExpr,
+            new ValueLiteralExpression(new java.math.BigDecimal(1000),
+              DecimalTypeInfo.of(DecimalType.MAX_PRECISION, DecimalType.MAX_COMPACT_PRECISION)))
+        )
+        new CallExpression(
           BuiltInFunctionDefinitions.CAST,
-          innerDiv,
-          typeLiteral(fromLegacyInfoToDataType(Types.SQL_TIMESTAMP)))
-
+          List(
+            innerDiv,
+            new TypeLiteralExpression(fromLegacyInfoToDataType(Types.SQL_TIMESTAMP))))
       case Types.SQL_TIMESTAMP =>
         fieldReferenceExpr
-
       case Types.STRING =>
-        unresolvedCall(
+        new CallExpression(
           BuiltInFunctionDefinitions.CAST,
-          fieldReferenceExpr,
-          typeLiteral(fromLegacyInfoToDataType(Types.SQL_TIMESTAMP)))
+          List(
+            fieldReferenceExpr,
+            new TypeLiteralExpression(fromLegacyInfoToDataType(Types.SQL_TIMESTAMP))))
     }
   }
 

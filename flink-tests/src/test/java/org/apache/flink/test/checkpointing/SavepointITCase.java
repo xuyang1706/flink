@@ -659,7 +659,8 @@ public class SavepointITCase extends TestLogger {
 
 		iteration.closeWith(iterationBody);
 
-		StreamGraph streamGraph = env.getStreamGraph("Test");
+		StreamGraph streamGraph = env.getStreamGraph();
+		streamGraph.setJobName("Test");
 
 		JobGraph jobGraph = streamGraph.getJobGraph();
 

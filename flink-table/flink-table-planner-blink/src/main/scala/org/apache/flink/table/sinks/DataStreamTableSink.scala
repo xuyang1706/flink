@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Internal
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.table.api.{Table, TableException}
-import org.apache.flink.table.types.TypeInfoDataTypeConverter.fromDataTypeToTypeInfo
 
 /**
   * A [[DataStreamTableSink]] specifies how to emit a [[Table]] to an DataStream[T]
@@ -45,15 +44,14 @@ class DataStreamTableSink[T](
   /**
     * Return the type expected by this [[TableSink]].
     *
-    * This type should depend on the types returned by [[getTableSchema]].
+    * This type should depend on the types returned by [[getFieldNames]].
     *
     * @return The type expected by this [[TableSink]].
     */
   override def getOutputType: TypeInformation[T] = outputType
 
   /** Returns the types of the table fields. */
-  override def getFieldTypes: Array[TypeInformation[_]] =
-    Array(tableSchema.getFieldDataTypes.map(fromDataTypeToTypeInfo): _*)
+  override def getFieldTypes: Array[TypeInformation[_]] = Array(tableSchema.getFieldTypes: _*)
 
   /** Returns the names of the table fields. */
   override def getFieldNames: Array[String] = tableSchema.getFieldNames

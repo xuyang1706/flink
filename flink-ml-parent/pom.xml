@@ -35,6 +35,5 @@ under the License.
 
 	<modules>
 		<module>flink-ml-api</module>
-		<module>flink-ml-lib</module>
 	</modules>
 </project>

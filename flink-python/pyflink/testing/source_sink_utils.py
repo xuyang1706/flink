@@ -25,8 +25,6 @@ from py4j.java_gateway import java_import
 from pyflink.find_flink_home import _find_flink_source_root
 from pyflink.java_gateway import get_gateway
 from pyflink.table import TableSink
-from pyflink.table.types import _to_java_type
-from pyflink.util import utils
 
 if sys.version_info[0] >= 3:
     xrange = range
@@ -39,12 +37,7 @@ class TestTableSink(TableSink):
 
     _inited = False
 
-    def __init__(self, j_table_sink, field_names, field_types):
-        gateway = get_gateway()
-        j_field_names = utils.to_jarray(gateway.jvm.String, field_names)
-        j_field_types = utils.to_jarray(gateway.jvm.TypeInformation,
-                                        [_to_java_type(field_type) for field_type in field_types])
-        j_table_sink = j_table_sink.configure(j_field_names, j_field_types)
+    def __init__(self, j_table_sink):
         super(TestTableSink, self).__init__(j_table_sink)
 
     @classmethod
@@ -74,12 +67,11 @@ class TestAppendSink(TestTableSink):
     A test append table sink.
     """
 
-    def __init__(self, field_names, field_types):
+    def __init__(self):
         TestTableSink._ensure_initialized()
 
         gateway = get_gateway()
-        super(TestAppendSink, self).__init__(
-            gateway.jvm.TestAppendSink(), field_names, field_types)
+        super(TestAppendSink, self).__init__(gateway.jvm.TestAppendSink())
 
 
 class TestRetractSink(TestTableSink):
@@ -87,12 +79,11 @@ class TestRetractSink(TestTableSink):
     A test retract table sink.
     """
 
-    def __init__(self, field_names, field_types):
+    def __init__(self):
         TestTableSink._ensure_initialized()
 
         gateway = get_gateway()
-        super(TestRetractSink, self).__init__(
-            gateway.jvm.TestRetractSink(), field_names, field_types)
+        super(TestRetractSink, self).__init__(gateway.jvm.TestRetractSink())
 
 
 class TestUpsertSink(TestTableSink):
@@ -100,7 +91,7 @@ class TestUpsertSink(TestTableSink):
     A test upsert table sink.
     """
 
-    def __init__(self, field_names, field_types, keys, is_append_only):
+    def __init__(self, keys, is_append_only):
         TestTableSink._ensure_initialized()
 
         gateway = get_gateway()
@@ -108,8 +99,7 @@ class TestUpsertSink(TestTableSink):
         for i in xrange(0, len(keys)):
             j_keys[i] = keys[i]
 
-        super(TestUpsertSink, self).__init__(
-            gateway.jvm.TestUpsertSink(j_keys, is_append_only), field_names, field_types)
+        super(TestUpsertSink, self).__init__(gateway.jvm.TestUpsertSink(j_keys, is_append_only))
 
 
 def results():

@@ -18,37 +18,30 @@
 
 package org.apache.flink.table.plan.nodes.physical.batch
 
-import java.{lang, util}
-
-import org.apache.calcite.plan._
-import org.apache.calcite.rel.RelNode
-import org.apache.calcite.rel.metadata.RelMetadataQuery
-import org.apache.calcite.rex.RexNode
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.runtime.operators.DamBehavior
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.apache.flink.table.api.{BatchTableEnvironment, TableException}
-import org.apache.flink.table.codegen.CodeGeneratorContext
+import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.{BatchTableEnvironment, TableException, Types}
 import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.plan.nodes.exec.{BatchExecNode, ExecNode}
 import org.apache.flink.table.plan.nodes.physical.PhysicalTableSourceScan
 import org.apache.flink.table.plan.schema.FlinkRelOptTable
+import org.apache.flink.table.sources.{BatchTableSource, TableSourceUtil}
+import org.apache.flink.table.`type`.TypeConverters.createInternalTypeFromTypeInfo
+import org.apache.flink.table.codegen.CodeGeneratorContext
 import org.apache.flink.table.plan.util.ScanUtil
-import org.apache.flink.table.sources.{StreamTableSource, TableSourceUtil}
+
 import org.apache.calcite.plan._
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.rex.RexNode
-import java.util
 
-import org.apache.flink.api.dag.Transformation
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
+import java.util
 
 import scala.collection.JavaConversions._
 
 /**
-  * Batch physical RelNode to read data from an external source defined by a
-  * bounded [[StreamTableSource]].
+  * Batch physical RelNode to read data from an external source defined by a [[BatchTableSource]].
   */
 class BatchExecTableSourceScan(
     cluster: RelOptCluster,
@@ -57,9 +50,6 @@ class BatchExecTableSourceScan(
   extends PhysicalTableSourceScan(cluster, traitSet, relOptTable)
   with BatchPhysicalRel
   with BatchExecNode[BaseRow]{
-
-  // cache table source transformation.
-  private var sourceTransform: Transformation[_] = _
 
   override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
     new BatchExecTableSourceScan(cluster, traitSet, relOptTable)
@@ -88,35 +78,24 @@ class BatchExecTableSourceScan(
     replaceInput(ordinalInParent, newInputNode.asInstanceOf[RelNode])
   }
 
-  def getSourceTransformation(
-      streamEnv: StreamExecutionEnvironment): Transformation[_] = {
-    if (sourceTransform == null) {
-      sourceTransform = tableSource.asInstanceOf[StreamTableSource[_]].
-          getDataStream(streamEnv).getTransformation
-    }
-    sourceTransform
-  }
-
   override def translateToPlanInternal(
-      tableEnv: BatchTableEnvironment): Transformation[BaseRow] = {
+      tableEnv: BatchTableEnvironment): StreamTransformation[BaseRow] = {
     val config = tableEnv.getConfig
-    val inputTransform = getSourceTransformation(tableEnv.execEnv)
-    inputTransform.setParallelism(getResource.getParallelism)
+    val bts = tableSource.asInstanceOf[BatchTableSource[_]]
+    val inputTransform = bts.getBoundedStream(tableEnv.streamEnv).getTransformation
 
     val fieldIndexes = TableSourceUtil.computeIndexMapping(
       tableSource,
       isStreamTable = false,
       None)
 
-    val inputDataType = fromLegacyInfoToDataType(inputTransform.getOutputType)
-    val producedDataType = tableSource.getProducedDataType
-
     // check that declared and actual type of table source DataStream are identical
-    if (inputDataType != producedDataType) {
+    if (createInternalTypeFromTypeInfo(inputTransform.getOutputType) !=
+      createInternalTypeFromTypeInfo(tableSource.getReturnType)) {
       throw new TableException(s"TableSource of type ${tableSource.getClass.getCanonicalName} " +
-        s"returned a DataStream of data type $producedDataType that does not match with the " +
-        s"data type $producedDataType declared by the TableSource.getProducedDataType() method. " +
-        s"Please validate the implementation of the TableSource.")
+        s"returned a DataSet of type ${inputTransform.getOutputType} that does not match with " +
+        s"the type ${tableSource.getReturnType} declared by the TableSource.getReturnType() " +
+        s"method. Please validate the implementation of the TableSource.")
     }
 
     // get expression to extract rowtime attribute
@@ -124,22 +103,21 @@ class BatchExecTableSourceScan(
       tableSource,
       None,
       cluster,
-      tableEnv.getRelBuilder
+      tableEnv.getRelBuilder,
+      Types.SQL_TIMESTAMP
     )
     if (needInternalConversion) {
-      val conversionTransform = ScanUtil.convertToInternalRow(
+      ScanUtil.convertToInternalRow(
         CodeGeneratorContext(config),
-        inputTransform.asInstanceOf[Transformation[Any]],
+        inputTransform.asInstanceOf[StreamTransformation[Any]],
         fieldIndexes,
-        producedDataType,
+        tableSource.getReturnType,
         getRowType,
         getTable.getQualifiedName,
         config,
         rowtimeExpression)
-      conversionTransform.setParallelism(getResource.getParallelism)
-      conversionTransform
     } else {
-      inputTransform.asInstanceOf[Transformation[BaseRow]]
+      inputTransform.asInstanceOf[StreamTransformation[BaseRow]]
     }
 
   }
@@ -151,13 +129,9 @@ class BatchExecTableSourceScan(
       None)
     ScanUtil.hasTimeAttributeField(fieldIndexes) ||
       ScanUtil.needsConversion(
-        tableSource.getProducedDataType,
+        tableSource.getReturnType,
         TypeExtractor.createTypeInfo(
-          tableSource, classOf[StreamTableSource[_]], tableSource.getClass, 0)
+          tableSource, classOf[BatchTableSource[_]], tableSource.getClass, 0)
           .getTypeClass.asInstanceOf[Class[_]])
-  }
-
-  def getEstimatedRowCount: lang.Double = {
-    getCluster.getMetadataQuery.getRowCount(this)
   }
 }

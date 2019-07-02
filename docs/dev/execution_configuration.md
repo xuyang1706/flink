@@ -42,9 +42,8 @@ var executionConfig = env.getConfig
 
 The following configuration options are available: (the default is bold)
 
-- `setClosureCleanerLevel()`. The closure cleaner level is set to `ClosureCleanerLevel.RECURSIVE` by default. The closure cleaner removes unneeded references to the surrounding class of anonymous functions inside Flink programs.
-With the closure cleaner disabled, it might happen that an anonymous user function is referencing the surrounding class, which is usually not Serializable. This will lead to exceptions by the serializer. The settings are:
-`NONE`: disable the closure cleaner completely, `TOP_LEVEL`: clean only the top-level class without recursing into fields, `RECURSIVE`: clean all the fields recursively.
+- **`enableClosureCleaner()`** / `disableClosureCleaner()`. The closure cleaner is enabled by default. The closure cleaner removes unneeded references to the surrounding class of anonymous functions inside Flink programs.
+With the closure cleaner disabled, it might happen that an anonymous user function is referencing the surrounding class, which is usually not Serializable. This will lead to exceptions by the serializer.
 
 - `getParallelism()` / `setParallelism(int parallelism)` Set the default parallelism for the job.
 

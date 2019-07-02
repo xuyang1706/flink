@@ -53,10 +53,6 @@ class MockTableEnvironment extends TableEnvironment {
 
   override def connect(connectorDescriptor: ConnectorDescriptor): TableDescriptor = ???
 
-  override def listCatalogs(): Array[String] = ???
-
-  override def listDatabases(): Array[String] = ???
-
   override def listTables(): Array[String] = ???
 
   override def listUserDefinedFunctions(): Array[String] = ???
@@ -86,15 +82,4 @@ class MockTableEnvironment extends TableEnvironment {
   override def useCatalog(catalogName: String): Unit = ???
 
   override def useDatabase(databaseName: String): Unit = ???
-
-  override def insertInto(
-    table: Table,
-    queryConfig: QueryConfig,
-    sinkPath: String,
-    sinkPathContinued: String*): Unit = ???
-
-  override def insertInto(
-    table: Table,
-    sinkPath: String,
-    sinkPathContinued: String*): Unit = ???
 }
